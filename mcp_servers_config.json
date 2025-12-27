@@ -1,0 +1,32 @@
+{
+  "mcpServers": {
+    "isaac-sim": {
+      "disabled": false,
+      "timeout": 60,
+      "type": "stdio",
+      "command": "/home/aaugus11/Documents/isaac-sim-mcp/mcp_venv/bin/python",
+      "args": [
+        "/home/aaugus11/Documents/isaac-sim-mcp/isaac_mcp/server.py"
+      ]
+    },
+    "ros-mcp-server": {
+      "disabled": false,
+      "timeout": 60,
+      "type": "stdio",
+      "command": "bash",
+      "args": [
+        "-c",
+        "source /opt/ros/humble/setup.bash && /home/aaugus11/Documents/ros-mcp-server/.venv/bin/python /home/aaugus11/Documents/ros-mcp-server/server.py"
+      ]
+    },
+    "Resources": {
+      "disabled": false,
+      "timeout": 60,
+      "type": "stdio",
+      "command": "/home/aaugus11/Documents/mcp-server-example/.venv/bin/python",
+      "args": [
+        "/home/aaugus11/Documents/ros-mcp-server/resource.py"
+      ]
+    }
+  }
+}
