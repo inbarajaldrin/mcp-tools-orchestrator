@@ -7,7 +7,7 @@ import requests
 import json
 from typing import Dict, Any, Optional, List
 
-_IPC_URL = "http://localhost:34563"
+_IPC_URL = "http://localhost:44491"
 
 
 # ============================================================================
@@ -90,6 +90,16 @@ def ros_mcp_server__get_available_objects(mode: str = "sim") -> dict:
     return _call_tool("ros-mcp-server", "get_available_objects", {"mode": mode})
 
 
+def ros_mcp_server__get_current_object_pose(object_name: Optional = None, mode: str = "sim", all: bool = False) -> dict:
+    """Get current object pose(s) from ROS topic.\n\nArgs:\n    object_name: Optional name of the object to get pose for. If not provided and all is False, returns pose for this object. If all is True, this parameter is ignored.\n    mode: Mode to use - \"sim\" for simulation (reads from /objects_poses_sim) or \"real\" for real robot (reads from /objects_poses_real) (default: \"sim\")\n    all: If True, returns poses for all objects. Mutually exclusive with object_name.\n\nReturns:\n    JSON output containing the current object pose(s) (position and orientation)"""
+    return _call_tool("ros-mcp-server", "get_current_object_pose", {"object_name": object_name, "mode": mode, "all": all})
+
+
+def ros_mcp_server__get_target_object_pose(object_name: str, base_name: str, mode: str = "sim") -> dict:
+    """Get target object pose in world frame from assembly configuration.\n\nCalculates the target object pose in world frame by:\n1. Loading assembly configuration from JSON\n2. Reading base pose (from ROS topic in sim mode, or using default in real mode)\n3. Extracting target position and orientation from JSON (relative to base)\n4. Transforming target pose from base frame to world frame\n\nArgs:\n    object_name: Name of the object\n    base_name: Name of the base object\n    mode: Mode to use - \"sim\" for simulation (reads base pose from topic) or \"real\" for real robot (uses default base pose) (default: \"sim\")\n\nReturns:\n    JSON output containing the target object pose in world frame (position and orientation)"""
+    return _call_tool("ros-mcp-server", "get_target_object_pose", {"object_name": object_name, "base_name": base_name, "mode": mode})
+
+
 def ros_mcp_server__get_topics() -> dict:
     """"""
     return _call_tool("ros-mcp-server", "get_topics", {})
@@ -105,9 +115,9 @@ def ros_mcp_server__move_to_grasp(object_name: str, grasp_id: int, mode: str = "
     return _call_tool("ros-mcp-server", "move_to_grasp", {"object_name": object_name, "grasp_id": grasp_id, "mode": mode, "move_to_object": move_to_object, "move_to_safe_height": move_to_safe_height})
 
 
-def ros_mcp_server__move_to_regrasp(mode: str, move_to_clear_space: bool = False, move_down: bool = False, move_to_safe_height: bool = False) -> dict:
-    """Move to regrasp position.\nThis tool is used to aid in reorienting the current object if the by placing it down on clear space and then moving to safe height so the object can be grasped again.\n\nIMPORTANT: Only ONE flag can be set to True at a time. These flags must be called in sequence one by one to complete the move to regrasp sequence.\n\nArgs:\n    mode: Mode to use - \"sim\" for simulation or \"real\" for real robot (default: \"sim\")\n    move_to_clear_space: This is to move above a clear space maintaining the current orientation of the object.\n    move_down: This is a force compliant move down to place the object on the clear space.\n    move_to_safe_height: This is to move to the safe height position after having opened the gripper. Now you are ready to grasp the object again.\n\nReturns:\n    Raw output from the move to regrasp primitive script. Notw down the object position and orientation for future use."""
-    return _call_tool("ros-mcp-server", "move_to_regrasp", {"mode": mode, "move_to_clear_space": move_to_clear_space, "move_down": move_down, "move_to_safe_height": move_to_safe_height})
+def ros_mcp_server__move_to_regrasp(mode: str, move_to_clear_space: bool = False, move_down: bool = False, move_ee_top_down: bool = False) -> dict:
+    """Move to regrasp position.\n\nPurpose: After reorienting an object relative to base, the end effector (EE) holding the object may be in a non-optimal orientation that causes inverse kinematics (IK) failures. This tool places the already-reoriented object down and enables regrasping it using a top-down EE orientation.\nHow it works: The object maintains its reoriented orientation, but the EE orientation changes to top-down. This improves IK success rates for subsequent operations while preserving the object's desired orientation.\nWill need to grasp the object again to complete a regrasp sequence.\nNo point in moving to regrasp without having rotated the object as the EE default orientation is top down. Or if you just want to place down the object in clear space.\nNote: After moving down and openning the gripper, the objects orientation might have changed slightly by a few degrees. Might have to account for it after grasping the object again.\nIMPORTANT: Only ONE flag can be set to True at a time. These flags must be called in sequence one by one to complete the move to regrasp sequence.\n\nArgs:\n    mode: Mode to use - \"sim\" for simulation or \"real\" for real robot (default: \"sim\")\n    move_to_clear_space: This is to move above a clear space maintaining the current orientation of the object.\n    move_down: This is a force compliant move down to place the object on the clear space.\n    move_ee_top_down: This is to move the end effector to a top-down orientation at safe height after having opened the gripper. Now you are ready to grasp the object again.\n\nReturns:\n    Raw output from the move to regrasp primitive script. Note down the object position and orientation for future use."""
+    return _call_tool("ros-mcp-server", "move_to_regrasp", {"mode": mode, "move_to_clear_space": move_to_clear_space, "move_down": move_down, "move_ee_top_down": move_ee_top_down})
 
 
 def ros_mcp_server__read_topic(topic_name: str, timeout: int = 5) -> dict:
@@ -115,9 +125,9 @@ def ros_mcp_server__read_topic(topic_name: str, timeout: int = 5) -> dict:
     return _call_tool("ros-mcp-server", "read_topic", {"topic_name": topic_name, "timeout": timeout})
 
 
-def ros_mcp_server__reorient_object(object_name: str, base_name: str, mode: str = "sim", current_object_orientation: Optional = None, target_base_orientation: Optional = None, use_default_base_orientation: bool = False) -> dict:
-    """Reorient object for assembly.\nReorients object to target base orientation relative to base.\nArgs:\n    object_name: Name of the object to reorient\n    base_name: Name of the base object\n    mode: Mode to use - \"sim\" for simulation or \"real\" for real robot (default: \"sim\")\n    current_object_orientation: Current object orientation quaternion [x, y, z, w] (required in real mode and always use the orientation of the object you got after moving to grasp the object because the object might not be visible in the camera after moving to grasp the object.)\n    target_base_orientation: Target base orientation quaternion [x, y, z, w] (required in real mode unless use_default_base_orientation is True, optional in sim mode)\n    use_default_base_orientation: Use default base orientation [0.0, 0.0, 0.0, 1.0] (for real mode, mutually exclusive with target_base_orientation)"""
-    return _call_tool("ros-mcp-server", "reorient_object", {"object_name": object_name, "base_name": base_name, "mode": mode, "current_object_orientation": current_object_orientation, "target_base_orientation": target_base_orientation, "use_default_base_orientation": use_default_base_orientation})
+def ros_mcp_server__rotate_object(object_name: str, base_name: str, mode: str = "sim", current_object_orientation: Optional = None, target_base_orientation: Optional = None, use_default_base_orientation: bool = False) -> dict:
+    """Rotate object for assembly.\nRotates object from current to target object orientation relative to current base orientation for assembly by controlling the End effector orientation for performing assembly.\nArgs:\n    object_name: Name of the object to rotate\n    base_name: Name of the base object\n    mode: Mode to use - \"sim\" for simulation or \"real\" for real robot (default: \"sim\")\n    current_object_orientation: Current object orientation quaternion [x, y, z, w] (required in real mode and always use the orientation of the object you got after moving to grasp the object because the object might not be visible in the camera after moving to grasp the object.)\n    target_base_orientation: Target base orientation quaternion [x, y, z, w] (required in real mode unless use_default_base_orientation is True, optional in sim mode)\n    use_default_base_orientation: Use default base orientation [0.0, 0.0, 0.0, 1.0] (for real mode, mutually exclusive with target_base_orientation)"""
+    return _call_tool("ros-mcp-server", "rotate_object", {"object_name": object_name, "base_name": base_name, "mode": mode, "current_object_orientation": current_object_orientation, "target_base_orientation": target_base_orientation, "use_default_base_orientation": use_default_base_orientation})
 
 
 def ros_mcp_server__scan_workspace(object_name: str) -> dict:
@@ -131,7 +141,7 @@ def ros_mcp_server__timeout_handler(signum, frame) -> dict:
 
 
 def ros_mcp_server__translate_object(mode: str, base_name: Optional = None, object_name: Optional = None, move_to_base: bool = False, move_down: bool = False, move_to_safe_height: bool = False, use_default_base_position: bool = False) -> dict:
-    """Translate object to target position.\nMoves object to target position relative to base.\nREQUIRED: Exactly one of move_to_base, move_down, or move_to_safe_height must be set to True (they are mutually exclusive).\n\nArgs:\n    mode: Mode to use - \"sim\" for simulation or \"real\" for real robot (default: \"sim\")\n    base_name: Name of the base object (required)\n    object_name: Name of the object being held (required in sim mode)\n    move_to_base: Moves to the specified base position in safe height (exactly one flag must be True)\n    move_down: Moves down to the specified target object position (exactly one flag must be True)\n    move_to_safe_height: After closing gripper move to safe height (exactly one flag must be True)\n    use_default_base_position: Use default base position and orientation (for real mode)"""
+    """Translate object to target position.\nMoves object to target position for performing assembly onto the base.\nREQUIRED: Exactly one of move_to_base, move_down, or move_to_safe_height must be set to True (they are mutually exclusive).\n\nArgs:\n    mode: Mode to use - \"sim\" for simulation or \"real\" for real robot (default: \"sim\")\n    base_name: Name of the base object (required)\n    object_name: Name of the object being held (required in sim mode)\n    move_to_base: Translates object above base position maintaining safe height (exactly one flag must be True)\n    move_down: Moves down to the final target object position. Verify if the object is in the right orientation before this final step. (exactly one flag must be True)\n    move_to_safe_height: After moving down and opening gripper, move to safe height (exactly one flag must be True)\n    use_default_base_position: Use default base position and orientation (for real mode)\n\nReturns:\n    Dictionary with \"output\" (raw output), \"returncode\" (exit code), and \"result\" (\"SUCCESS\" or \"FAILURE\")"""
     return _call_tool("ros-mcp-server", "translate_object", {"mode": mode, "base_name": base_name, "object_name": object_name, "move_to_base": move_to_base, "move_down": move_down, "move_to_safe_height": move_to_safe_height, "use_default_base_position": use_default_base_position})
 
 
@@ -155,9 +165,9 @@ def ros_mcp_server__verify_grasp(object_name: str, mode: str = "sim") -> dict:
 # ============================================================================
 
 
-def Resources__clear_assembly_resource(assembly_id: str) -> dict:
-    """Clear/delete an assembly resource\n\nArgs:\n    assembly_id: The ID of the assembly to clear\n\nReturns:\n    JSON string with confirmation or error message"""
-    return _call_tool("Resources", "clear_assembly_resource", {"assembly_id": assembly_id})
+def Resources__clear_assembly_sequence_resource(assembly_id: str) -> dict:
+    """Clear/delete an assembly sequence resource\n\nArgs:\n    assembly_id: The ID of the assembly to clear\n\nReturns:\n    JSON string with confirmation or error message"""
+    return _call_tool("Resources", "clear_assembly_sequence_resource", {"assembly_id": assembly_id})
 
 
 def Resources__clear_disassembly_grasp_resource(assembly_id: str, object_name: str) -> dict:
@@ -165,9 +175,9 @@ def Resources__clear_disassembly_grasp_resource(assembly_id: str, object_name: s
     return _call_tool("Resources", "clear_disassembly_grasp_resource", {"assembly_id": assembly_id, "object_name": object_name})
 
 
-def Resources__clear_grasp_resource(assembly_id: str, object_name: str) -> dict:
+def Resources__clear_object_grasp_resource(assembly_id: str, object_name: str) -> dict:
     """Clear/delete a grasp resource for an object in a specific assembly\n\nArgs:\n    assembly_id: The ID of the assembly\n    object_name: The name of the object to clear\n\nReturns:\n    JSON string with confirmation or error message"""
-    return _call_tool("Resources", "clear_grasp_resource", {"assembly_id": assembly_id, "object_name": object_name})
+    return _call_tool("Resources", "clear_object_grasp_resource", {"assembly_id": assembly_id, "object_name": object_name})
 
 
 def Resources__get_assembly_file(assembly_id: str) -> dict:
@@ -176,17 +186,17 @@ def Resources__get_assembly_file(assembly_id: str) -> dict:
 
 
 def Resources__get_assembly_object_tools_trials(assembly_id: str, object_name: str) -> dict:
-    """Get tools_trials for a specific object in an assembly sequence. Each trial has trial_id, grasp_id, gripper_state, tools (ordered sequence), and result."""
+    """Get tools_trials for a specific object in an assembly sequence. Each trial has trial_id, grasp_id, tools (ordered sequence), and result."""
     return _call_tool("Resources", "get_assembly_object_tools_trials", {"assembly_id": assembly_id, "object_name": object_name})
 
 
 def Resources__get_assembly_object_trial(assembly_id: str, object_name: str, trial_id: str) -> dict:
-    """Get a specific trial for an object in an assembly sequence. Returns trial_id, grasp_id, gripper_state, tools (ordered sequence), and result."""
+    """Get a specific trial for an object in an assembly sequence. Returns trial_id, grasp_id, tools (ordered sequence), and result."""
     return _call_tool("Resources", "get_assembly_object_trial", {"assembly_id": assembly_id, "object_name": object_name, "trial_id": trial_id})
 
 
 def Resources__get_assembly_object_trial_result(assembly_id: str, object_name: str, trial_id: str) -> dict:
-    """Get all configurations (trial_id, grasp_id, gripper_state, tools, and result) for a specific trial_id of an object_name in an assembly. Returns all attempts (both SUCCESS and FAILURE) with their configurations. IMPORTANT: The gripper must be set to the specified gripper_state BEFORE moving to grasp to access the grasp_id."""
+    """Get all configurations (trial_id, grasp_id, tools, and result) for a specific trial_id of an object_name in an assembly. Returns all attempts (both SUCCESS and FAILURE) with their configurations."""
     return _call_tool("Resources", "get_assembly_object_trial_result", {"assembly_id": assembly_id, "object_name": object_name, "trial_id": trial_id})
 
 
@@ -196,7 +206,7 @@ def Resources__get_assembly_object_trials_by_result(assembly_id: str, object_nam
 
 
 def Resources__get_assembly_sequence(assembly_id: str) -> dict:
-    """Get sequence for a specific Assembly ID. Returns dict with 'assembled_into' (string) and 'sequence' (list). Each item in sequence has sequence_id (fixed), object_name (fixed), and tools_trials (list of trials with trial_id, grasp_id, gripper_state, tools ordered sequence, and result)."""
+    """Get sequence for a specific Assembly ID. Returns dict with 'assembled_into' (string) and 'sequence' (list). Each item in sequence has sequence_id (fixed), object_name (fixed), and tools_trials (list of trials with trial_id, grasp_id, tools ordered sequence, and result)."""
     return _call_tool("Resources", "get_assembly_sequence", {"assembly_id": assembly_id})
 
 
@@ -245,24 +255,24 @@ def Resources__get_object_status_for_id(assembly_id: str, object_name: str, gras
     return _call_tool("Resources", "get_object_status_for_id", {"assembly_id": assembly_id, "object_name": object_name, "grasp_id": grasp_id})
 
 
-def Resources__list_assembly_resource() -> dict:
-    """List all assemblies in the assembly resource\n\nReturns:\n    JSON string containing all assembly IDs"""
-    return _call_tool("Resources", "list_assembly_resource", {})
+def Resources__list_assembly_sequence_resource() -> dict:
+    """List all assemblies in the assembly sequence resource\n\nReturns:\n    JSON string containing all assembly IDs"""
+    return _call_tool("Resources", "list_assembly_sequence_resource", {})
 
 
-def Resources__list_disassembly_grasp_resource(assembly_id: str) -> dict:
-    """List all objects in the disassembly grasp resource for a specific assembly\n\nArgs:\n    assembly_id: The ID of the assembly (must be a numeric string, e.g., \"3\")\n\nReturns:\n    JSON string containing object names for the assembly\n\nNote: Disassembly grasp configurations only store grasp_id and result (no gripper_state)."""
-    return _call_tool("Resources", "list_disassembly_grasp_resource", {"assembly_id": assembly_id})
+def Resources__list_disassembly_grasp_resource() -> dict:
+    """List all assemblies in the disassembly grasp resource\n\nReturns:\n    JSON string containing all assembly IDs that have disassembly grasp logs\n\nNote: Disassembly grasp configurations only store grasp_id and result (no gripper_state)."""
+    return _call_tool("Resources", "list_disassembly_grasp_resource", {})
 
 
-def Resources__list_grasp_resource(assembly_id: str) -> dict:
-    """List all objects in the grasp resource for a specific assembly\n\nArgs:\n    assembly_id: The ID of the assembly (must be a numeric string, e.g., \"3\")\n\nReturns:\n    JSON string containing object names for the assembly\n\nNote: When using grasp configurations from this resource, remember that the gripper must be set to the specified gripper_state BEFORE moving to grasp to access the grasp_id."""
-    return _call_tool("Resources", "list_grasp_resource", {"assembly_id": assembly_id})
+def Resources__list_object_grasp_resource() -> dict:
+    """List all assemblies in the grasp resource\n\nReturns:\n    JSON string containing all assembly IDs that have grasp logs\n\nNote: When using grasp configurations from this resource, remember that the gripper must be set to the specified gripper_state BEFORE moving to grasp to access the grasp_id."""
+    return _call_tool("Resources", "list_object_grasp_resource", {})
 
 
-def Resources__load_assembly_resource(assembly_id: str) -> dict:
-    """Load assembly resource from JSON file for a specific assembly. Returns dict with 'assembled_into' and 'sequence' keys."""
-    return _call_tool("Resources", "load_assembly_resource", {"assembly_id": assembly_id})
+def Resources__load_assembly_sequence_resource(assembly_id: str) -> dict:
+    """Load assembly sequence resource from JSON file for a specific assembly. Returns dict with 'assembled_into' and 'sequence' keys."""
+    return _call_tool("Resources", "load_assembly_sequence_resource", {"assembly_id": assembly_id})
 
 
 def Resources__load_disassembly_grasp_resource(assembly_id: str) -> dict:
@@ -285,9 +295,9 @@ def Resources__normalize_assembly_id(assembly_id: str) -> dict:
     return _call_tool("Resources", "normalize_assembly_id", {"assembly_id": assembly_id})
 
 
-def Resources__read_assembly_resource(assembly_id: str) -> dict:
-    """Read the complete resource for an assembly (dict with assembled_into and sequence)\n\nArgs:\n    assembly_id: The ID of the assembly\n\nReturns:\n    JSON string containing dict with 'assembled_into' (string) and 'sequence' (list). Each item in sequence has sequence_id (fixed), object_name (fixed), and tools_trials (list of trials with trial_id, grasp_id, gripper_state, tools ordered sequence, and result)"""
-    return _call_tool("Resources", "read_assembly_resource", {"assembly_id": assembly_id})
+def Resources__read_assembly_sequence_resource(assembly_id: str) -> dict:
+    """Read the complete assembly sequence resource for an assembly (dict with assembled_into and sequence)\n\nArgs:\n    assembly_id: The ID of the assembly\n\nReturns:\n    JSON string containing dict with 'assembled_into' (string) and 'sequence' (list). Each item in sequence has sequence_id (fixed), object_name (fixed), and tools_trials (list of trials with trial_id, grasp_id, tools ordered sequence, and result)"""
+    return _call_tool("Resources", "read_assembly_sequence_resource", {"assembly_id": assembly_id})
 
 
 def Resources__read_disassembly_grasp_resource(assembly_id: str, object_name: str) -> dict:
@@ -295,14 +305,14 @@ def Resources__read_disassembly_grasp_resource(assembly_id: str, object_name: st
     return _call_tool("Resources", "read_disassembly_grasp_resource", {"assembly_id": assembly_id, "object_name": object_name})
 
 
-def Resources__read_grasp_resource(assembly_id: str, object_name: str) -> dict:
+def Resources__read_object_grasp_resource(assembly_id: str, object_name: str) -> dict:
     """Read the grasp configurations for an object in a specific assembly (grasp_configs with grasp_id, gripper_state, and result)\n\nArgs:\n    assembly_id: The ID of the assembly\n    object_name: The name of the object\n\nReturns:\n    JSON string containing grasp_configs list with grasp_id, gripper_state, and result (includes both SUCCESS and FAILURE attempts)\n    Each config has: {\"grasp_id\": <int>, \"gripper_state\": \"open\"|\"half-open\", \"result\": \"SUCCESS\"|\"FAILURE\"}\n\nIMPORTANT: The gripper must be set to the specified gripper_state BEFORE moving to grasp to access the grasp_id.\nThe sequence should be: 1) Set gripper to the gripper_state (open or half-open), 2) Move to grasp position, 3) Execute grasp using the grasp_id."""
-    return _call_tool("Resources", "read_grasp_resource", {"assembly_id": assembly_id, "object_name": object_name})
+    return _call_tool("Resources", "read_object_grasp_resource", {"assembly_id": assembly_id, "object_name": object_name})
 
 
-def Resources__save_assembly_resource(assembly_id: str, data) -> dict:
-    """Save assembly resource to JSON file for a specific assembly"""
-    return _call_tool("Resources", "save_assembly_resource", {"assembly_id": assembly_id, "data": data})
+def Resources__save_assembly_sequence_resource(assembly_id: str, data) -> dict:
+    """Save assembly sequence resource to JSON file for a specific assembly"""
+    return _call_tool("Resources", "save_assembly_sequence_resource", {"assembly_id": assembly_id, "data": data})
 
 
 def Resources__save_disassembly_grasp_resource(assembly_id: str, data) -> dict:
@@ -325,9 +335,9 @@ def Resources__validate_assembly_id(assembly_id: str) -> dict:
     return _call_tool("Resources", "validate_assembly_id", {"assembly_id": assembly_id})
 
 
-def Resources__write_assembly_resource(assembly_id: str, object_name: str, sequence_id: int, assembled_into: str, tools_trials: Optional = None) -> dict:
-    """Write or update an assembly resource for a specific object. assembled_into is stored at the top level (once for the entire assembly). sequence_id and object_name are fixed and cannot be changed after creation.\n\nArgs:\n    assembly_id: The ID of the assembly\n    object_name: The name of the object\n    sequence_id: The sequence ID (integer, fixed)\n    assembled_into: The name of the object/base that objects are being assembled into (string, stored at top level)\n    tools_trials: Optional list of trial objects, each with:\n                  - trial_id: integer (required)\n                  - grasp_id: integer (required)\n                  - gripper_state: \"open\" or \"half-open\" (required)\n                  - tools: ordered list of strings (required) - sequence of tool names executed in order\n                            NOTE: Add flags also if called under one tool (e.g., [\"tool_name\", \"tool_name --flag1\", \"tool_name --flag2\"])\n                  - result: \"SUCCESS\" or \"FAILURE\" (required)\n                  Format: [{\"trial_id\": 1, \"grasp_id\": 1, \"gripper_state\": \"open\", \"tools\": [\"tool_name_1\", \"tool_name_2\"], \"result\": \"SUCCESS\"}, ...]\n\nReturns:\n    JSON string with confirmation or error message"""
-    return _call_tool("Resources", "write_assembly_resource", {"assembly_id": assembly_id, "object_name": object_name, "sequence_id": sequence_id, "assembled_into": assembled_into, "tools_trials": tools_trials})
+def Resources__write_assembly_sequence_resource(assembly_id: str, object_name: str, sequence_id: int, assembled_into: str, tools_trials: Optional = None) -> dict:
+    """Write or update an assembly sequence resource for a specific object. assembled_into is stored at the top level (once for the entire assembly). sequence_id and object_name are fixed and cannot be changed after creation.\n\nArgs:\n    assembly_id: The ID of the assembly\n    object_name: The name of the object\n    sequence_id: The sequence ID (integer, fixed)\n    assembled_into: The name of the object/base that objects are being assembled into (string, stored at top level)\n    tools_trials: Optional list of trial objects, each with:\n                  - trial_id: integer (required)\n                  - grasp_id: integer (required)\n                  - tools: ordered list of strings (required) - sequence of tool names executed in order\n                            NOTE: Add flags also if called under one tool (e.g., [\"tool_name\", \"tool_name --flag1\", \"tool_name --flag2\"])\n                            NOTE: Gripper state is included in the tools sequence (e.g., \"control_gripper --command open\")\n                  - result: \"SUCCESS\" or \"FAILURE\" (required)\n                  - comment: string (optional) - optional comment/note about the trial\n                  Format: [{\"trial_id\": 1, \"grasp_id\": 1, \"tools\": [\"tool_name_1\", \"tool_name_2\"], \"result\": \"SUCCESS\", \"comment\": \"optional note\"}, ...]\n\nReturns:\n    JSON string with confirmation or error message"""
+    return _call_tool("Resources", "write_assembly_sequence_resource", {"assembly_id": assembly_id, "object_name": object_name, "sequence_id": sequence_id, "assembled_into": assembled_into, "tools_trials": tools_trials})
 
 
 def Resources__write_disassembly_grasp_resource(assembly_id: str, object_name: str, grasp_configs: Optional = None) -> dict:
@@ -335,9 +345,9 @@ def Resources__write_disassembly_grasp_resource(assembly_id: str, object_name: s
     return _call_tool("Resources", "write_disassembly_grasp_resource", {"assembly_id": assembly_id, "object_name": object_name, "grasp_configs": grasp_configs})
 
 
-def Resources__write_grasp_resource(assembly_id: str, object_name: str, grasp_configs: Optional = None) -> dict:
+def Resources__write_object_grasp_resource(assembly_id: str, object_name: str, grasp_configs: Optional = None) -> dict:
     """Write or update grasp configurations for an object in a specific assembly (grasp_configs list with grasp_id, gripper_state, and result)\n\nArgs:\n    assembly_id: The ID of the assembly\n    object_name: The name of the object\n    grasp_configs: List of grasp configurations, each with grasp_id, gripper_state, and result.\n                   Format: [{\"grasp_id\": 1, \"gripper_state\": \"open\", \"result\": \"SUCCESS\"}, ...]\n                   - grasp_id: integer (required)\n                   - gripper_state: \"open\" or \"half-open\" (required)\n                   - result: \"SUCCESS\" or \"FAILURE\" (required)\n                   Both success and failure attempts are stored.\n\nReturns:\n    JSON string with confirmation or error message"""
-    return _call_tool("Resources", "write_grasp_resource", {"assembly_id": assembly_id, "object_name": object_name, "grasp_configs": grasp_configs})
+    return _call_tool("Resources", "write_object_grasp_resource", {"assembly_id": assembly_id, "object_name": object_name, "grasp_configs": grasp_configs})
 
 
 

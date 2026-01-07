@@ -48,7 +48,7 @@ MCP Tools Orchestrator leverages **mcp-client's existing server connections** vi
 │                     mcp-client (CLI)                         │
 │  ┌──────────────────────────────────────────────────────┐   │
 │  │  Agent (Claude/GPT)                                   │   │
-│  │  Calls: mcp-orchestrator__execute_composed_code(script)  │   │
+│  │  Calls: mcp-tools-orchestrator__execute_composed_code(script)  │   │
 │  └──────────────────────────────────────────────────────┘   │
 │         ↓                                                    │
 │  ┌──────────────────────────────────────────────────────┐   │
@@ -59,7 +59,7 @@ MCP Tools Orchestrator leverages **mcp-client's existing server connections** vi
 └─────────────────────────────────────────────────────────────┘
          ↓ (MCP stdio)              ↑ (HTTP IPC)
 ┌──────────────────────┐    ┌────────────────┐
-│   mcp-orchestrator       │    │ Python Script  │
+│   mcp-tools-orchestrator │    │ Python Script  │
 │   (server.py)        │    │ (user policy)  │
 │                      │    │                │
 │ 1. Generates API     │    │ from unified_  │
@@ -93,7 +93,7 @@ MCP Tools Orchestrator leverages **mcp-client's existing server connections** vi
 ### Install MCP Tools Orchestrator
 
 ```bash
-cd /home/aaugus11/Documents/mcp-orchestrator
+cd /path/to/mcp-tools-orchestrator
 uv sync
 ```
 
@@ -103,17 +103,17 @@ uv sync
 
 ### Step 1: Configure mcp-client
 
-Add mcp-orchestrator to your `mcp_config.json` (typically in `~/Documents/mcp-client-example/`):
+Add mcp-tools-orchestrator to your `mcp_config.json` (typically in `~/Documents/mcp-client-example/`):
 
 ```json
 {
   "mcpServers": {
-    "mcp-orchestrator": {
+    "mcp-tools-orchestrator": {
       "disabled": false,
       "timeout": 60,
       "type": "stdio",
-      "command": "/home/aaugus11/Documents/mcp-orchestrator/.venv/bin/python",
-      "args": ["/home/aaugus11/Documents/mcp-orchestrator/server.py"]
+      "command": "/path/to/mcp-tools-orchestrator/.venv/bin/python",
+      "args": ["/path/to/mcp-tools-orchestrator/server.py"]
     },
     "ros-mcp-server": {
       "disabled": false,
@@ -132,7 +132,7 @@ Add mcp-orchestrator to your `mcp_config.json` (typically in `~/Documents/mcp-cl
 **Note**: The client will automatically:
 - Start an IPC HTTP server on a random port
 - Set `MCP_CLIENT_IPC_URL` environment variable for orchestrator
-- Pass the IPC URL when spawning mcp-orchestrator
+- Pass the IPC URL when spawning mcp-tools-orchestrator
 
 ### Step 2: Configure Orchestrator's Server List
 
@@ -171,11 +171,11 @@ Create `mcp_servers_config.json` in the orchestrator directory:
 Start the mcp-client with orchestrator enabled:
 
 ```bash
-cd ~/Documents/mcp-client-example
+cd ~/path/to/mcp-client
 mcp-client --all  # Connects to all enabled servers including orchestrator
 ```
 
-**That's it!** The unified API is **automatically generated** when mcp-orchestrator starts. No manual generation step needed.
+**That's it!** The unified API is **automatically generated** when mcp-tools-orchestrator starts. No manual generation step needed.
 
 Enable orchestrator mode (optional but recommended):
 
@@ -314,7 +314,7 @@ class UnifiedAPIGenerator:
 # In generated/unified_api.py (auto-generated)
 import requests
 
-_IPC_URL = "http://localhost:54321"  # Client's IPC server
+_IPC_URL = "http://localhost:<random_port>"  # Client's IPC server (set dynamically)
 
 # Tools from ros-mcp-server
 def ros_mcp_server__move_to_grasp(
@@ -382,10 +382,10 @@ from unified_api import *
 ## 📁 Project Structure
 
 ```
-mcp-orchestrator/
+mcp-tools-orchestrator/
 ├── server.py                         # Main FastMCP server entry point
 │
-├── src/mcp_orchestrator/
+├── src/mcp_tools_orchestrator/
 │   ├── api_generator.py              # Introspection-based API generator
 │   ├── introspect_server.py          # Isolated server introspection script
 │   ├── code_executor.py              # Executes policy code in subprocess
@@ -412,9 +412,9 @@ mcp-orchestrator/
 
 **Active Files (Clean Architecture):**
 - `server.py` - Main MCP server
-- `src/mcp_orchestrator/api_generator.py` - API generation via introspection
-- `src/mcp_orchestrator/introspect_server.py` - Isolated introspection script
-- `src/mcp_orchestrator/code_executor.py` - Policy code execution
+- `src/mcp_tools_orchestrator/api_generator.py` - API generation via introspection
+- `src/mcp_tools_orchestrator/introspect_server.py` - Isolated introspection script
+- `src/mcp_tools_orchestrator/code_executor.py` - Policy code execution
 
 **Generated Files:**
 - `generated/unified_api.py` - **Auto-generated on every server startup** (no manual steps needed)
@@ -573,7 +573,7 @@ More examples in the `examples/` directory!
 ```bash
 # The server requires MCP_CLIENT_IPC_URL to be set
 # Normally set by mcp-client, but for testing:
-export MCP_CLIENT_IPC_URL="http://localhost:12345"
+export MCP_CLIENT_IPC_URL="http://localhost:<port>"
 python server.py
 ```
 
@@ -582,17 +582,17 @@ python server.py
 ### Regenerating the API Manually (Development Only)
 
 ```bash
-python src/mcp_orchestrator/api_generator.py \
+python src/mcp_tools_orchestrator/api_generator.py \
     mcp_servers_config.json \
     generated/unified_api.py \
-    http://localhost:12345
+    http://localhost:<port>
 ```
 
 ### Testing Introspection
 
 ```bash
 # Test introspection of a specific server
-python src/mcp_orchestrator/introspect_server.py \
+python src/mcp_tools_orchestrator/introspect_server.py \
     /path/to/server.py \
     server-name
 ```
@@ -628,7 +628,7 @@ The `.python-version` file specifies 3.13 for consistency. If you encounter issu
 
 The unified API is always generated at:
 ```
-/home/aaugus11/Documents/mcp-orchestrator/generated/unified_api.py
+<project-root>/generated/unified_api.py
 ```
 
 This path is determined by `server.py`:

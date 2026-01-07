@@ -113,16 +113,13 @@ async def execute_composed_code(code: str, timeout: int = 3600) -> Dict[str, Any
     ```python
     from unified_api import *
 
-    # Use tools from ros-mcp-server (check list_available_tools for exact signatures)
-    ros_mcp_server__move_home()
-    ros_mcp_server__control_gripper("open", mode="sim")
-
-    # Use tools from isaac-sim
-    isaac_sim__save_scene_state()
-
-    # Complex control flow
-    for grasp_id in range(3):
-        result = ros_mcp_server__move_to_grasp("block_1", grasp_id, mode="sim", move_to_object=True)
+    # Call tools using the pattern: server_name__tool_name(...)
+    # Use list_available_tools() to see all available tools and their exact signatures
+    result = server_name__tool_name(param1="value", param2=123)
+    
+    # Complex control flow with error handling
+    for attempt in range(3):
+        result = server_name__another_tool(param="value")
         if result.get("status") == "success":
             break
     ```
@@ -276,16 +273,13 @@ Usage in Policy Code:
 from unified_api import *
 
 # All tools are available as functions with FULL PARAMETER SIGNATURES
-# Example: Call a tool from ros-mcp-server WITH parameters
-result = ros_mcp_server__move_home()
-ros_mcp_server__control_gripper("open", mode="sim")
-ros_mcp_server__move_to_grasp("fork_orange", 6, mode="sim", move_to_object=True)
-
-# Example: Call a tool from isaac-sim
-isaac_sim__save_scene_state()
+# Tool naming pattern: server_name__tool_name(...)
+# Example:
+result = server_name__tool_name(param1="value", param2=123)
 
 # All functions return dictionaries with results
 # Use them for decision-making in your policy code
+# Call list_available_tools() to see all available tools and their exact signatures
 
 Available Servers:
 ==================
