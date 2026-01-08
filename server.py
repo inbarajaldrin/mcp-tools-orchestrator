@@ -93,7 +93,7 @@ async def initialize():
 
 
 @mcp.tool()
-async def execute_composed_code(code: str, timeout: int = 3600) -> Dict[str, Any]:
+async def execute_composed_code(code: str) -> Dict[str, Any]:
     """Execute Python code with access to tools from all connected MCP servers.
 
     This tool enables "Code as Policies" - write Python code that orchestrates
@@ -126,7 +126,6 @@ async def execute_composed_code(code: str, timeout: int = 3600) -> Dict[str, Any
 
     Args:
         code: Python code to execute
-        timeout: Maximum execution time in seconds (default: 3600)
 
     Returns:
         Dictionary with execution results (output, status, returncode)
@@ -134,7 +133,8 @@ async def execute_composed_code(code: str, timeout: int = 3600) -> Dict[str, Any
     if not _initialized:
         await initialize()
 
-    return _executor.execute_code(code, timeout)
+    # Hardcoded timeout: 1 hour (3600 seconds)
+    return _executor.execute_code(code, timeout=3600)
 
 
 @mcp.tool()

@@ -6,6 +6,7 @@ import os
 import sys
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 from typing import Dict, Any
 
@@ -33,6 +34,10 @@ class CodeExecutor:
         Returns:
             Dictionary with execution results (output, status, returncode)
         """
+        temp_file = None
+        stdout_file = None
+        stderr_file = None
+        process = None
         try:
             # Create a temporary Python file
             with tempfile.NamedTemporaryFile(
@@ -43,52 +48,148 @@ class CodeExecutor:
                 f.write(wrapped_code)
                 temp_file = f.name
 
+            # Create temporary files for stdout and stderr to capture partial output
+            stdout_fd, stdout_file = tempfile.mkstemp(suffix=".stdout", text=True)
+            stderr_fd, stderr_file = tempfile.mkstemp(suffix=".stderr", text=True)
+
             # Set up environment
             env = self._setup_execution_environment()
 
             # Get the venv Python interpreter (fixes missing 'requests' module issue)
             venv_python = self._get_venv_python()
 
-            # Execute the code
-            result = subprocess.run(
-                [venv_python, temp_file],
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-                env=env,
-            )
-
-            # Clean up temp file
+            # Use Popen with file redirection to capture output even on timeout
+            stdout_handle = open(stdout_file, 'w')
+            stderr_handle = open(stderr_file, 'w')
             try:
-                os.unlink(temp_file)
-            except:
-                pass
+                process = subprocess.Popen(
+                    [venv_python, temp_file],
+                    stdout=stdout_handle,
+                    stderr=stderr_handle,
+                    text=True,
+                    env=env,
+                    bufsize=1,  # Line buffered for real-time output
+                )
 
-            # Return results
-            output = result.stdout if result.stdout else ""
-            if result.stderr:
-                output += "\n" + result.stderr
+                # Wait for process with timeout using polling
+                start_time = time.time()
+                timed_out = False
+                while process.poll() is None:
+                    elapsed = time.time() - start_time
+                    if elapsed >= timeout:
+                        timed_out = True
+                        break
+                    time.sleep(0.1)  # Poll every 100ms
+                
+                # Close file handles to ensure output is flushed before reading
+                stdout_handle.close()
+                stderr_handle.close()
+                
+                if timed_out:
+                    # Timeout occurred - kill process and read partial output
+                    process.kill()
+                    process.wait()  # Wait for process to actually terminate
+                    
+                    # Read whatever output was captured before timeout
+                    partial_stdout = ""
+                    partial_stderr = ""
+                    try:
+                        with open(stdout_file, 'r') as f:
+                            partial_stdout = f.read()
+                        with open(stderr_file, 'r') as f:
+                            partial_stderr = f.read()
+                    except:
+                        pass
 
-            return {
-                "output": output,
-                "returncode": result.returncode,
-                "status": "success" if result.returncode == 0 else "failed",
-            }
+                    # Clean up temp files
+                    try:
+                        os.unlink(temp_file)
+                        os.unlink(stdout_file)
+                        os.unlink(stderr_file)
+                    except:
+                        pass
 
-        except subprocess.TimeoutExpired:
-            # Clean up temp file
-            try:
-                os.unlink(temp_file)
-            except:
-                pass
+                    # Combine partial output with timeout message
+                    output_parts = []
+                    if partial_stdout:
+                        output_parts.append(partial_stdout)
+                    if partial_stderr:
+                        output_parts.append(partial_stderr)
+                    
+                    # Append timeout message
+                    timeout_msg = f"\n\n[Timeout] Code execution timed out after {timeout} seconds. Partial results above."
+                    output_parts.append(timeout_msg)
 
-            return {
-                "output": f"Error: Code execution timed out after {timeout} seconds",
-                "returncode": -1,
-                "status": "timeout",
-            }
+                    return {
+                        "output": "\n".join(output_parts) if output_parts else timeout_msg.strip(),
+                        "returncode": -1,
+                        "status": "timeout",
+                    }
+                else:
+                    # Process completed normally
+                    returncode = process.returncode
+                    
+                    # Read output files
+                    with open(stdout_file, 'r') as f:
+                        stdout = f.read()
+                    with open(stderr_file, 'r') as f:
+                        stderr = f.read()
+
+                    # Clean up temp files
+                    try:
+                        os.unlink(temp_file)
+                        os.unlink(stdout_file)
+                        os.unlink(stderr_file)
+                    except:
+                        pass
+
+                    # Return results
+                    output = stdout if stdout else ""
+                    if stderr:
+                        output += "\n" + stderr if output else stderr
+
+                    return {
+                        "output": output,
+                        "returncode": returncode,
+                        "status": "success" if returncode == 0 else "failed",
+                    }
+            except Exception as inner_e:
+                # Close file handles on inner exception
+                try:
+                    stdout_handle.close()
+                except:
+                    pass
+                try:
+                    stderr_handle.close()
+                except:
+                    pass
+                raise
 
         except Exception as e:
+            # Clean up temp files
+            if temp_file:
+                try:
+                    os.unlink(temp_file)
+                except:
+                    pass
+            if stdout_file:
+                try:
+                    os.unlink(stdout_file)
+                except:
+                    pass
+            if stderr_file:
+                try:
+                    os.unlink(stderr_file)
+                except:
+                    pass
+            
+            # Clean up process if it exists
+            if process:
+                try:
+                    process.kill()
+                except:
+                    pass
+
             return {
                 "output": f"Error: Failed to execute code: {str(e)}",
                 "returncode": -1,
