@@ -78,24 +78,34 @@ def discover_tools(server_path: str, exclude_tools: list = None):
         module_name = f"_introspect_{Path(server_path).stem}"
         module = load_module(server_path, module_name)
 
-        # Try FastMCP.list_tools first (but don't call it since it's async)
+        # Find FastMCP instance and get registered tools
         mcp_obj = None
         for name, obj in inspect.getmembers(module):
             if hasattr(obj, '__class__') and obj.__class__.__name__ == 'FastMCP':
                 mcp_obj = obj
                 break
 
-        # Fallback: introspect all functions
-        for name, obj in inspect.getmembers(module):
-            if inspect.isfunction(obj):
-                # Check if it looks like an MCP tool
-                if (hasattr(obj, '__wrapped__') or
-                    (hasattr(obj, '__annotations__') and not name.startswith('_'))):
-                    if name in exclude_tools:
-                        continue
+        if mcp_obj is not None:
+            # Use FastMCP's tool registry - this returns only @mcp.tool() decorated functions
+            registered_tools = mcp_obj._tool_manager.list_tools()
+            for tool in registered_tools:
+                if tool.name in exclude_tools:
+                    continue
 
-                    sig_info = extract_function_signature(obj)
-                    tools.append(sig_info)
+                # Extract signature from the registered tool's function
+                sig_info = extract_function_signature(tool.fn)
+                tools.append(sig_info)
+        else:
+            # Fallback: introspect functions (less accurate)
+            for name, obj in inspect.getmembers(module):
+                if inspect.isfunction(obj):
+                    # Only include functions that look like tools (have @mcp.tool wrapper)
+                    if hasattr(obj, '__wrapped__') and not name.startswith('_'):
+                        if name in exclude_tools:
+                            continue
+
+                        sig_info = extract_function_signature(obj)
+                        tools.append(sig_info)
 
         return {
             'success': True,

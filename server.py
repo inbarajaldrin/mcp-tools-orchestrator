@@ -96,7 +96,7 @@ async def initialize():
 async def execute_composed_code(code: str) -> Dict[str, Any]:
     """Execute Python code with access to tools from all connected MCP servers.
 
-    This tool enables "Code as Policies" - write Python code that orchestrates
+    This tool enables writing Python code that orchestrates
     tools from multiple MCP servers with complex control flow (loops, conditionals,
     error handling, etc.).
 
@@ -104,7 +104,6 @@ async def execute_composed_code(code: str) -> Dict[str, Any]:
     function signatures with their parameters. Each function shows:
     - Full signature: function_name(param1: type, param2: type = default)
     - Parameters: the parameter list
-    - Docstring: what the function does
 
     The code has access to all tools via the auto-generated unified API.
     Import with: from unified_api import *
@@ -138,11 +137,17 @@ async def execute_composed_code(code: str) -> Dict[str, Any]:
 
 
 @mcp.tool()
-async def list_available_tools() -> Dict[str, Any]:
+async def list_available_tools(include_descriptions: bool = False) -> Dict[str, Any]:
     """List all available tools from all connected MCP servers.
 
-    Returns a structured view of what tools are available for use in composed code,
-    including their full function signatures and documentation.
+    Returns a structured view of what tools are available for use in composed code.
+    By default, only returns function names and signatures to minimize context usage.
+
+    Args:
+        include_descriptions: If True, include full docstrings for each tool.
+                              Defaults to False since descriptions are already
+                              provided via tool schemas.
+                              Do not include description if you already have description of the tool.
 
     Returns:
         Dictionary mapping server names to their available tools with signatures
@@ -174,7 +179,8 @@ async def list_available_tools() -> Dict[str, Any]:
         elif line.strip().startswith('def ') and '__' in line and current_server:
             # Save previous function if exists
             if current_function:
-                current_function['docstring'] = '\n'.join(docstring_lines).strip()
+                if include_descriptions:
+                    current_function['docstring'] = '\n'.join(docstring_lines).strip()
                 servers[current_server].append(current_function)
                 docstring_lines = []
 
@@ -194,8 +200,8 @@ async def list_available_tools() -> Dict[str, Any]:
                 }
                 in_docstring = True
 
-        # Extract docstring
-        elif in_docstring and current_function:
+        # Extract docstring (only if needed)
+        elif in_docstring and current_function and include_descriptions:
             if '"""' in line:
                 # Extract docstring content between triple quotes
                 docstring_match = re.search(r'"""(.*)"""', line)
@@ -204,10 +210,13 @@ async def list_available_tools() -> Dict[str, Any]:
                 in_docstring = False
             elif 'return _call_tool' in line:
                 in_docstring = False
+        elif in_docstring and '"""' in line:
+            in_docstring = False
 
     # Don't forget the last function
     if current_function:
-        current_function['docstring'] = '\n'.join(docstring_lines).strip()
+        if include_descriptions:
+            current_function['docstring'] = '\n'.join(docstring_lines).strip()
         servers[current_server].append(current_function)
 
     return {
@@ -217,80 +226,80 @@ async def list_available_tools() -> Dict[str, Any]:
     }
 
 
-@mcp.tool()
-async def refresh_tools() -> Dict[str, Any]:
-    """Refresh tool discovery from all connected servers.
+# @mcp.tool()
+# async def refresh_tools() -> Dict[str, Any]:
+#     """Refresh tool discovery from all connected servers.
+#
+#     Call this if servers have added/removed tools and you want to update
+#     the unified API.
+#
+#     Returns:
+#         Status message with updated tool counts
+#     """
+#     global _initialized
+#     _initialized = False
+#     await initialize()
+#
+#     return {
+#         "status": "success",
+#         "message": "Tools refreshed successfully",
+#         "server_count": _server_count,
+#         "tool_count": _tool_count,
+#     }
 
-    Call this if servers have added/removed tools and you want to update
-    the unified API.
 
-    Returns:
-        Status message with updated tool counts
-    """
-    global _initialized
-    _initialized = False
-    await initialize()
-
-    return {
-        "status": "success",
-        "message": "Tools refreshed successfully",
-        "server_count": _server_count,
-        "tool_count": _tool_count,
-    }
-
-
-@mcp.tool()
-def get_api_documentation() -> str:
-    """Get documentation for the generated unified API.
-
-    Returns the path to the generated API file and usage instructions.
-
-    Returns:
-        Documentation string
-    """
-    if not _initialized:
-        return "Server not initialized. Call execute_composed_code or list_available_tools first."
-
-    # Extract server names from API file
-    import re
-    with open(_api_path, 'r') as f:
-        content = f.read()
-
-    servers = []
-    for line in content.split('\n'):
-        if '# Tools from:' in line:
-            server_name = line.split('# Tools from:')[1].strip()
-            servers.append(server_name)
-
-    doc = f"""
-MCP Orchestrator - Unified API Documentation
-
-Generated API Location: {_api_path}
-
-Usage in Policy Code:
-=====================
-
-from unified_api import *
-
-# All tools are available as functions with FULL PARAMETER SIGNATURES
-# Tool naming pattern: server_name__tool_name(...)
-# Example:
-result = server_name__tool_name(param1="value", param2=123)
-
-# All functions return dictionaries with results
-# Use them for decision-making in your policy code
-# Call list_available_tools() to see all available tools and their exact signatures
-
-Available Servers:
-==================
-{chr(10).join(f'  - {server}' for server in servers)}
-
-Total Tools: {_tool_count}
-Total Servers: {_server_count}
-
-For a complete list of tools, use the list_available_tools tool.
-"""
-    return doc
+# @mcp.tool()
+# def get_api_documentation() -> str:
+#     """Get documentation for the generated unified API.
+#
+#     Returns the path to the generated API file and usage instructions.
+#
+#     Returns:
+#         Documentation string
+#     """
+#     if not _initialized:
+#         return "Server not initialized. Call execute_composed_code or list_available_tools first."
+#
+#     # Extract server names from API file
+#     import re
+#     with open(_api_path, 'r') as f:
+#         content = f.read()
+#
+#     servers = []
+#     for line in content.split('\n'):
+#         if '# Tools from:' in line:
+#             server_name = line.split('# Tools from:')[1].strip()
+#             servers.append(server_name)
+#
+#     doc = f"""
+# MCP Orchestrator - Unified API Documentation
+#
+# Generated API Location: {_api_path}
+#
+# Usage in Policy Code:
+# =====================
+#
+# from unified_api import *
+#
+# # All tools are available as functions with FULL PARAMETER SIGNATURES
+# # Tool naming pattern: server_name__tool_name(...)
+# # Example:
+# result = server_name__tool_name(param1="value", param2=123)
+#
+# # All functions return dictionaries with results
+# # Use them for decision-making in your policy code
+# # Call list_available_tools() to see all available tools and their exact signatures
+#
+# Available Servers:
+# ==================
+# {chr(10).join(f'  - {server}' for server in servers)}
+#
+# Total Tools: {_tool_count}
+# Total Servers: {_server_count}
+#
+# For a complete list of tools, use the list_available_tools tool.
+# """
+#     return doc
 
 
 if __name__ == "__main__":
