@@ -100,27 +100,40 @@ async def execute_composed_code(code: str) -> Dict[str, Any]:
     tools from multiple MCP servers with complex control flow (loops, conditionals,
     error handling, etc.).
 
-    IMPORTANT: Before writing code, call list_available_tools() to see the exact
-    function signatures with their parameters. Each function shows:
-    - Full signature: function_name(param1: type, param2: type = default)
-    - Parameters: the parameter list
-
-    The code has access to all tools via the auto-generated unified API.
+    The code has access to all MCP tools via the auto-generated unified API.
     Import with: from unified_api import *
+
+    WHEN TO USE: After you've manually figured out a working sequence of tool calls
+    for one item, use this tool to automate that same sequence across multiple items.
+    This saves time and reduces repetitive individual tool calls.
+
+    SYNTAX: Tools are called as Python functions (not JSON tool calls):
+    - Replace dashes with underscores in server names: "my-server__tool_name" → my_server__tool_name()
+    - Use keyword arguments with the same parameter names from the tool schema
 
     Example:
     ```python
     from unified_api import *
 
-    # Call tools using the pattern: server_name__tool_name(...)
-    # Use list_available_tools() to see all available tools and their exact signatures
-    result = server_name__tool_name(param1="value", param2=123)
-    
-    # Complex control flow with error handling
-    for attempt in range(3):
-        result = server_name__another_tool(param="value")
-        if result.get("status") == "success":
-            break
+    # After manually discovering a working sequence for one item,
+    # automate it for remaining items using a loop
+    items = ["item_a", "item_b", "item_c"]
+    results = []
+
+    for item in items:
+        # Call tools as Python functions: servername__toolname(keyword=args)
+        server__prepare(target=item, mode="sim")
+        result = server__execute_action(name=item, value=123, mode="sim")
+
+        # Handle failures with retry or rollback
+        if result.get("result") != "success":
+            server__restore_state()
+            continue
+
+        server__finalize(item=item)
+        results.append({"item": item, "status": "success"})
+
+    print(f"Processed {len(results)}/{len(items)} successfully")
     ```
 
     Args:
