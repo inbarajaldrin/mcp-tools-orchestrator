@@ -4,10 +4,13 @@
       "disabled": false,
       "timeout": 60,
       "type": "stdio",
-      "command": "/home/aaugus11/Documents/isaac-sim-mcp/mcp_venv/bin/python",
+      "command": "/home/aaugus11/Documents/isaac-sim-mcp/.venv/bin/python",
       "args": [
         "/home/aaugus11/Documents/isaac-sim-mcp/isaac_mcp/server.py"
-      ]
+      ],
+      "env": {
+        "ISAAC_SIM_PORT": "8766"
+      }
     },
     "ros-mcp-server": {
       "disabled": false,
