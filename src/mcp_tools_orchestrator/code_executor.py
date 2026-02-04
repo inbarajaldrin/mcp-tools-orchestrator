@@ -128,7 +128,7 @@ class CodeExecutor:
                 else:
                     # Process completed normally
                     returncode = process.returncode
-                    
+
                     # Read output files
                     with open(stdout_file, 'r') as f:
                         stdout = f.read()
@@ -142,6 +142,17 @@ class CodeExecutor:
                         os.unlink(stderr_file)
                     except:
                         pass
+
+                    # Check for abort marker in stderr
+                    abort_info = self._extract_abort_info(stderr)
+                    if abort_info:
+                        return {
+                            "output": stdout.rstrip() if stdout else "",
+                            "returncode": returncode,
+                            "status": "aborted",
+                            "reason": abort_info.get("reason", "Operation cancelled by user"),
+                            "tool": abort_info.get("tool", "unknown"),
+                        }
 
                     # Return results
                     output = stdout if stdout else ""
@@ -258,3 +269,28 @@ os.environ['MCP_ORCHESTRATOR_IPC_URL'] = '{self.ipc_url}'
 
         # Fallback: use current interpreter
         return sys.executable
+
+    def _extract_abort_info(self, stderr: str) -> Dict[str, Any] | None:
+        """Extract abort information from stderr if present.
+
+        Looks for the structured abort marker:
+        __MCP_ABORT_JSON__{"aborted": true, ...}__MCP_ABORT_JSON__
+
+        Args:
+            stderr: The stderr output from code execution
+
+        Returns:
+            Parsed abort info dict if found, None otherwise
+        """
+        import json
+        import re
+
+        marker_pattern = r'__MCP_ABORT_JSON__(.+?)__MCP_ABORT_JSON__'
+        match = re.search(marker_pattern, stderr)
+        if match:
+            try:
+                return json.loads(match.group(1))
+            except json.JSONDecodeError:
+                # Malformed JSON, return basic abort info
+                return {"aborted": True, "reason": "Operation cancelled by user"}
+        return None

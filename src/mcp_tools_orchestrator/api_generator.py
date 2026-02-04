@@ -99,10 +99,10 @@ def _call_tool(server: str, tool: str, arguments: dict) -> dict:
                 # Detect abort signal
                 if (error_data.get("aborted") or
                     "[ABORTED]" in str(error_data.get("error", ""))):
-                    # Print clear abort message to stderr
+                    # Print structured JSON abort marker to stderr for detection by executor
                     import sys
-                    print("\\n[ABORTED] Operation cancelled by user - waiting for further input from the user", file=sys.stderr)
-                    # Stop script execution immediately (no message to avoid duplication)
+                    print('__MCP_ABORT_JSON__{"aborted": true, "reason": "Operation cancelled by user", "tool": "' + server + '__' + tool + '"}__MCP_ABORT_JSON__', file=sys.stderr)
+                    # Stop script execution immediately
                     raise SystemExit(1)
             except (ValueError, KeyError):
                 # Not JSON or missing expected fields, treat as regular error
