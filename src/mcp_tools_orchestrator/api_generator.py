@@ -1,14 +1,19 @@
 """
-API Generator V2 - Uses Python introspection to generate unified API.
+API Generator - Generates a unified Python API for tools from multiple MCP servers.
 
-This version uses isolated subprocess introspection to avoid dependency conflicts.
-Each server is introspected in its own Python environment.
+Supports two discovery modes:
+  1. IPC-based (primary): Queries the client's IPC /list_tools endpoint to get
+     tool schemas from all connected servers, including dynamically registered tools.
+  2. Introspection-based (legacy fallback): Imports each server's Python module
+     in a subprocess and inspects FastMCP._tool_manager. Cannot discover tools
+     registered dynamically at runtime (e.g. isaac-sim).
 """
 
 import os
 import sys
 import json
 import subprocess
+import requests
 from pathlib import Path
 from typing import Dict, List, Any, Tuple
 from jinja2 import Template
@@ -235,6 +240,143 @@ def _call_tool(server: str, tool: str, arguments: dict) -> dict:
             import traceback
             traceback.print_exc()
             return []
+
+    def _schema_to_python_type(self, prop: dict) -> str | None:
+        """Convert a JSON Schema type to a Python type annotation string."""
+        type_map = {
+            "string": "str",
+            "integer": "int",
+            "number": "float",
+            "boolean": "bool",
+            "array": "List",
+            "object": "Dict",
+        }
+        return type_map.get(prop.get("type"))
+
+    def build_signature_from_schema(self, input_schema: dict) -> Tuple[str, str]:
+        """Build a Python function signature from a JSON Schema input_schema.
+
+        Args:
+            input_schema: The tool's input_schema (JSON Schema object)
+
+        Returns:
+            (params_str, args_dict) — same format as build_function_signature
+        """
+        properties = input_schema.get("properties", {})
+        required = set(input_schema.get("required", []))
+
+        required_params = []
+        optional_params = []
+
+        for name, prop in properties.items():
+            py_type = self._schema_to_python_type(prop)
+            has_default = "default" in prop
+            is_required = name in required
+
+            if is_required and not has_default:
+                # Required param, no default
+                if py_type:
+                    required_params.append((name, f"{name}: {py_type}"))
+                else:
+                    required_params.append((name, name))
+            else:
+                # Optional param — use schema default or None
+                if has_default:
+                    default = prop["default"]
+                    default_repr = repr(default)
+                else:
+                    default_repr = "None"
+
+                if py_type:
+                    optional_params.append((name, f"{name}: {py_type} = {default_repr}"))
+                else:
+                    optional_params.append((name, f"{name} = {default_repr}"))
+
+        # Required params first, then optional
+        all_params = required_params + optional_params
+        params_str = ", ".join(p[1] for p in all_params)
+        args_dict = "{" + ", ".join(f'"{p[0]}": {p[0]}' for p in all_params) + "}" if all_params else "{}"
+
+        return params_str, args_dict
+
+    def generate_api_from_ipc(
+        self,
+        ipc_url: str,
+        output_path: str,
+        allowed_servers: List[str] = None,
+    ):
+        """Generate unified API by querying the client's IPC /list_tools endpoint.
+
+        This discovers all tools from all connected MCP servers, including those
+        registered dynamically at runtime (e.g. isaac-sim).
+
+        Args:
+            ipc_url: URL of the client's IPC server
+            output_path: Path to write the generated unified_api.py
+            allowed_servers: If provided, only include tools from these servers
+        """
+        print(f"[Orchestrator] Discovering tools via IPC: {ipc_url}/list_tools")
+
+        try:
+            resp = requests.get(f"{ipc_url}/list_tools", timeout=30)
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception as e:
+            raise RuntimeError(f"Failed to query IPC /list_tools: {e}")
+
+        if not data.get("success"):
+            raise RuntimeError(f"IPC /list_tools returned error: {data.get('error')}")
+
+        ipc_servers = data.get("servers", {})
+        servers = {}
+
+        for server_name, tool_list in ipc_servers.items():
+            # Apply whitelist filter
+            if allowed_servers is not None and server_name not in allowed_servers:
+                print(f"[Orchestrator] Skipping server not in whitelist: {server_name}")
+                continue
+
+            tools = []
+            for tool_def in tool_list:
+                tool_name = tool_def["name"]
+                description = tool_def.get("description", "")
+                input_schema = tool_def.get("input_schema", {})
+
+                params_str, args_dict = self.build_signature_from_schema(input_schema)
+                docstring = description.replace('"', '\\"').replace('\n', '\\n')
+
+                tools.append({
+                    "name": tool_name.replace("-", "_"),
+                    "original_name": tool_name,
+                    "params_str": params_str,
+                    "args_dict": args_dict,
+                    "docstring": docstring,
+                })
+
+            if tools:
+                servers[server_name] = tools
+                print(f"[Orchestrator] Found {len(tools)} tools from {server_name}")
+            else:
+                print(f"[Orchestrator] No tools from {server_name}")
+
+        # Generate the API file using the same template
+        template = Template(self.api_template)
+        generated_code = template.render(
+            servers=servers,
+            client_ipc_url=ipc_url,
+        )
+
+        output_file = Path(output_path)
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(output_file, "w") as f:
+            f.write(generated_code)
+
+        total_tools = sum(len(t) for t in servers.values())
+        print(f"[Orchestrator] Generated unified API at: {output_path}")
+        print(f"[Orchestrator] Total: {len(servers)} servers, {total_tools} tools")
+
+        return output_path
 
     def generate_api_from_config(
         self,

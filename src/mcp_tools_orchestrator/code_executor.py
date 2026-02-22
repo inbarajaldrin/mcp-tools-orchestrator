@@ -3,6 +3,7 @@ Code Executor - Executes policy code with access to the unified API.
 """
 
 import os
+import re
 import sys
 import subprocess
 import tempfile
@@ -23,6 +24,80 @@ class CodeExecutor:
         """
         self.api_path = Path(api_path)
         self.ipc_url = ipc_url
+        self._hyphen_replacements = self._build_hyphen_replacements()
+
+    def _build_hyphen_replacements(self) -> list:
+        """Build a list of (hyphenated, underscored) pairs from the unified API.
+
+        Extracts server prefixes from '# Tools from: server-name' comments
+        and function names from 'def prefix__tool(...)' lines in the generated
+        unified_api.py. Returns pairs sorted longest-first so replacements
+        don't produce partial matches.
+        """
+        pairs = []
+        try:
+            with open(self.api_path, 'r') as f:
+                content = f.read()
+
+            # Collect hyphenated server names from section headers
+            server_names = set()
+            for m in re.finditer(r'^# Tools from: (.+)$', content, re.MULTILINE):
+                name = m.group(1).strip()
+                if '-' in name:
+                    server_names.add(name)
+
+            # For each hyphenated server, collect its function names and build
+            # the mapping from the hyphenated form to the underscored form.
+            for server in server_names:
+                underscored_prefix = server.replace('-', '_')
+                # Map the bare prefix (e.g. in import statements)
+                pairs.append((server, underscored_prefix))
+
+            # Also collect full function names (prefix__tool) that have hyphens
+            # in case a model writes them out fully with hyphens
+            for m in re.finditer(r'^def ([a-zA-Z_][a-zA-Z0-9_]*__[a-zA-Z0-9_]+)\(', content, re.MULTILINE):
+                func_name = m.group(1)
+                # Reconstruct the hyphenated version by reversing the prefix substitution
+                for server in server_names:
+                    underscored_prefix = server.replace('-', '_')
+                    if func_name.startswith(underscored_prefix + '__'):
+                        hyphenated = server + '__' + func_name[len(underscored_prefix) + 2:]
+                        pairs.append((hyphenated, func_name))
+
+        except FileNotFoundError:
+            pass
+
+        # Sort longest-first to avoid partial replacements
+        pairs.sort(key=lambda p: len(p[0]), reverse=True)
+        # Deduplicate while preserving order
+        seen = set()
+        unique = []
+        for pair in pairs:
+            if pair[0] not in seen:
+                seen.add(pair[0])
+                unique.append(pair)
+        return unique
+
+    def _fix_hyphenated_names(self, code: str) -> str:
+        """Replace hyphenated MCP tool names with their valid Python equivalents.
+
+        Some models copy tool names verbatim from tool definitions (e.g.
+        'ros-mcp-server__move_home') into Python code, where hyphens are
+        parsed as subtraction. This fixes those names to their underscored
+        form (e.g. 'ros_mcp_server__move_home').
+        """
+        # Apply known exact replacements first (longest-first)
+        for hyphenated, underscored in self._hyphen_replacements:
+            code = code.replace(hyphenated, underscored)
+
+        # Catch-all: replace any remaining hyphens in identifiers before '__'
+        # Handles partial/malformed variants like 'ros_mcp-server__tool'
+        code = re.sub(
+            r'([A-Za-z0-9_]*)-([A-Za-z0-9_-]*__)',
+            lambda m: m.group(0).replace('-', '_'),
+            code,
+        )
+        return code
 
     def execute_code(self, code: str, timeout: int = 3600) -> Dict[str, Any]:
         """Execute policy code with access to unified API.
@@ -39,6 +114,9 @@ class CodeExecutor:
         stderr_file = None
         process = None
         try:
+            # Fix hyphenated tool names before wrapping
+            code = self._fix_hyphenated_names(code)
+
             # Create a temporary Python file
             with tempfile.NamedTemporaryFile(
                 mode="w", suffix=".py", delete=False

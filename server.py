@@ -1,11 +1,12 @@
 """
 MCP Tools Orchestrator Server - Main server entry point.
 
-Updated to use Python introspection for tool discovery - directly imports
-server modules to extract function signatures, then routes calls through IPC.
+Discovers tools from all connected MCP servers via the client's IPC endpoint,
+generates a unified Python API, and executes composed code against it.
 """
 
 import asyncio
+import json
 import os
 from pathlib import Path
 from typing import Dict, Any
@@ -28,6 +29,17 @@ _server_count: int = 0
 _initialized: bool = False
 
 
+def _load_allowed_servers(config_path: str) -> list:
+    """Read mcp_servers_config.json and return enabled server names as a whitelist."""
+    with open(config_path, 'r') as f:
+        config = json.load(f)
+
+    return [
+        name for name, cfg in config.get('mcpServers', {}).items()
+        if not cfg.get('disabled', False)
+    ]
+
+
 async def initialize():
     """Initialize the MCP Orchestrator server."""
     global _generator, _executor, _api_path, _client_ipc_url, _config_path, _tool_count, _server_count, _initialized
@@ -46,7 +58,7 @@ async def initialize():
 
     print(f"[Orchestrator] Using client IPC at: {_client_ipc_url}")
 
-    # Get config path - use mcp-tools-orchestrator's own config
+    # Get config path - used as a whitelist for which servers to include
     script_dir = Path(__file__).parent
     _config_path = str(script_dir / "mcp_servers_config.json")
 
@@ -56,20 +68,19 @@ async def initialize():
             "Please create mcp_servers_config.json with server definitions."
         )
 
-    print(f"[Orchestrator] Using config: {_config_path}")
+    allowed_servers = _load_allowed_servers(_config_path)
+    print(f"[Orchestrator] Server whitelist: {allowed_servers}")
 
     # Initialize API generator
     _generator = UnifiedAPIGenerator()
 
-    # Discover tools and generate API using Python introspection
+    # Discover tools via IPC and generate unified API
     try:
-        # Generate unified API
         generated_dir = script_dir / "generated"
         generated_dir.mkdir(exist_ok=True)
         _api_path = str(generated_dir / "unified_api.py")
 
-        # Generate unified API using introspection
-        _generator.generate_api_from_config(_config_path, _api_path, _client_ipc_url)
+        _generator.generate_api_from_ipc(_client_ipc_url, _api_path, allowed_servers)
 
         # Count tools by reading the generated file
         with open(_api_path, 'r') as f:
@@ -82,11 +93,11 @@ async def initialize():
 
         _initialized = True
 
-        print(f"[Orchestrator] ✓ Initialized successfully")
-        print(f"[Orchestrator] ✓ Generated unified API at: {_api_path}")
+        print(f"[Orchestrator] Initialized successfully")
+        print(f"[Orchestrator] Generated unified API at: {_api_path}")
 
     except Exception as e:
-        print(f"[Orchestrator] ✗ Initialization failed: {e}")
+        print(f"[Orchestrator] Initialization failed: {e}")
         import traceback
         traceback.print_exc()
         raise

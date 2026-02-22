@@ -7,7 +7,7 @@ import requests
 import json
 from typing import Dict, Any, Optional, List
 
-_IPC_URL = "http://localhost:39359"
+_IPC_URL = "http://localhost:33245"
 
 
 # ============================================================================
@@ -16,18 +16,13 @@ _IPC_URL = "http://localhost:39359"
 
 
 def isaac_sim__save_scene_state() -> dict:
-    """Saves current object poses to a JSON file so it can be retrieved later.\nMake sure the objects are in the correct place before saving the scene state."""
+    """[isaac-sim] Saves current object poses to a JSON file so it can be retrieved later."""
     return _call_tool("isaac-sim", "save_scene_state", {})
 
 
 def isaac_sim__restore_scene_state() -> dict:
-    """Restores previously saved object poses from a JSON file to the scene."""
+    """[isaac-sim] Restores previously saved object poses from a JSON file to the scene."""
     return _call_tool("isaac-sim", "restore_scene_state", {})
-
-
-def isaac_sim__clear_scene_state() -> dict:
-    """Clear/delete the scene state JSON file.\n\nThis tool deletes the entire scene state file, removing all saved object poses.\n\nExample:\n    clear_scene_state()"""
-    return _call_tool("isaac-sim", "clear_scene_state", {})
 
 
 # ============================================================================
@@ -36,93 +31,93 @@ def isaac_sim__clear_scene_state() -> dict:
 
 
 def ros_mcp_server__get_topics() -> dict:
-    """"""
+    """[ros-mcp-server] """
     return _call_tool("ros-mcp-server", "get_topics", {})
 
 
 def ros_mcp_server__read_topic(topic_name: str, timeout: int = 5) -> dict:
-    """Read data from any ROS topic using ros2 topic echo --once command.\nWorks with standard ROS2 message types like PoseStamped, Twist, JointState, etc.\n\nArgs:\n    topic_name: The ROS topic to subscribe to (e.g., \"/object_poses/jenga_2\", \"/cmd_vel\")\n    timeout: Timeout in seconds for message capture (default: 5)\n\nReturns:\n    Dictionary containing the topic data or error information"""
+    """[ros-mcp-server] \n    Read data from any ROS topic using ros2 topic echo --once command.\n    Works with standard ROS2 message types like PoseStamped, Twist, JointState, etc.\n    \n    Args:\n        topic_name: The ROS topic to subscribe to (e.g., \"/object_poses/jenga_2\", \"/cmd_vel\")\n        timeout: Timeout in seconds for message capture (default: 5)\n    \n    Returns:\n        Dictionary containing the topic data or error information\n    """
     return _call_tool("ros-mcp-server", "read_topic", {"topic_name": topic_name, "timeout": timeout})
 
 
 def ros_mcp_server__execute_python_code(code: str, timeout: int = 30) -> dict:
-    """Execute Python code for calculations and math operations.\n\nThis tool allows the agent to execute Python code for performing calculations,\nmath operations, data processing, or any other Python computations.\n\nFile saving: Use relative paths (e.g., \"output.txt\") instead of absolute paths like \"/tmp/output.txt\".\n\nArgs:\n    code: Python code to execute\n    timeout: Maximum execution time in seconds (default: 30)\n\nReturns:\n    Dictionary with output from the executed Python code (stdout + stderr) and file information"""
+    """[ros-mcp-server] Execute Python code for calculations and math operations.\n\n    This tool allows the agent to execute Python code for performing calculations,\n    math operations, data processing, or any other Python computations.\n\n    File saving: Use relative paths (e.g., \"output.txt\") instead of absolute paths like \"/tmp/output.txt\".\n\n    Args:\n        code: Python code to execute\n        timeout: Maximum execution time in seconds (default: 30)\n\n    Returns:\n        Dictionary with output from the executed Python code (stdout + stderr) and file information\n    """
     return _call_tool("ros-mcp-server", "execute_python_code", {"code": code, "timeout": timeout})
 
 
-def ros_mcp_server__get_available_objects(mode = "sim") -> dict:
-    """Get list of available object names from ROS topic.\n\nArgs:\n    mode: Robot mode\n\nReturns:\n    JSON output containing list of available object names"""
-    return _call_tool("ros-mcp-server", "get_available_objects", {"mode": mode})
+def ros_mcp_server__get_scene_info(task_type: str = 'assembly', mode: str = 'sim') -> dict:
+    """[ros-mcp-server] Get scene information with objects and their available grasp points.\n\n    All objects are included; those without grasp points have an empty grasps array.\n    Order is included based on task_type: assembly_order for assembly, disassembly_order for disassembly.\n    Boards (order 0) are excluded from disassembly_order.\n\n    Args:\n        task_type: Task type - \"assembly\" or \"disassembly\"\n        mode: Robot mode\n\n    Returns:\n        JSON with format (assembly):\n        {\n            \"object_name\": {\n                \"grasps\": [{\"id\": 0, \"gripper_states\": [\"open\", \"half-open\"]}],\n                \"assembly_order\": 2\n            },\n            \"base_name\": {\n                \"grasps\": [],\n                \"assembly_order\": 0\n            }\n        }\n\n        JSON with format (disassembly):\n        {\n            \"object_name\": {\n                \"grasps\": [{\"id\": 0, \"gripper_states\": [\"open\", \"half-open\"]}],\n                \"disassembly_order\": 1\n            },\n            \"base_name\": {\n                \"grasps\": []\n            }\n        }\n    """
+    return _call_tool("ros-mcp-server", "get_scene_info", {"task_type": task_type, "mode": mode})
 
 
-def ros_mcp_server__get_available_grasp_ids(mode = "sim") -> dict:
-    """Get available grasp IDs per object from ROS topic.\n\nArgs:\n    mode: Robot mode\n\nReturns:\n    JSON output containing available grasp IDs per object"""
-    return _call_tool("ros-mcp-server", "get_available_grasp_ids", {"mode": mode})
-
-
-def ros_mcp_server__get_current_grasp_points_pose(mode = "sim") -> dict:
-    """Get current grasp point positions from ROS topic.\n\nReads grasp point positions from the grasp points topic.\n\nArgs:\n    mode: Robot mode\n\nReturns:\n    JSON output containing grasp point poses (id and position) per object,\n    sorted by z value (highest first)"""
-    return _call_tool("ros-mcp-server", "get_current_grasp_points_pose", {"mode": mode})
-
-
-def ros_mcp_server__get_target_object_pose(object_name: str, base_name: str, mode = "sim") -> dict:
-    """Get target object pose in world frame from assembly configuration.\n\nCalculates the target object pose in world frame by:\n1. Loading assembly configuration from JSON\n2. Reading base pose (from ROS topic in sim mode, or using default in real mode)\n3. Extracting target position and orientation from JSON (relative to base)\n4. Transforming target pose from base frame to world frame\n\nArgs:\n    object_name: Name of the object\n    base_name: Name of the base object\n    mode: Robot mode\n\nReturns:\n    JSON output containing the target object pose in world frame (position and orientation)"""
+def ros_mcp_server__get_target_object_pose(object_name: str, base_name: str, mode: str = 'sim') -> dict:
+    """[ros-mcp-server] Get target object pose in world frame from assembly configuration.\n\n    Calculates the target object pose in world frame by:\n    1. Loading assembly configuration from JSON\n    2. Reading base pose (from ROS topic in sim mode, or using default in real mode)\n    3. Extracting target position and orientation from JSON (relative to base)\n    4. Transforming target pose from base frame to world frame\n\n    Args:\n        object_name: Name of the object\n        base_name: Name of the base object\n        mode: Robot mode\n\n    Returns:\n        JSON output containing the target object pose in world frame (position and orientation)\n    """
     return _call_tool("ros-mcp-server", "get_target_object_pose", {"object_name": object_name, "base_name": base_name, "mode": mode})
 
 
-def ros_mcp_server__get_current_object_pose(object_name: Optional = None, mode = "sim", all: bool = False) -> dict:
-    """Get current object pose(s) from ROS topic.\n\nArgs:\n    object_name: Name of the object to get pose for (ignored if all=True)\n    mode: Robot mode\n    all: If True, returns poses for all objects\n\nReturns:\n    JSON output containing the current object pose(s) (position and orientation)"""
+def ros_mcp_server__get_current_object_pose(object_name = None, mode: str = 'sim', all: bool = False) -> dict:
+    """[ros-mcp-server] Get current object pose(s) from ROS topic.\n\n    Args:\n        object_name: Name of the object to get pose for (ignored if all=True)\n        mode: Robot mode\n        all: If True, returns poses for all objects\n\n    Returns:\n        JSON output containing the current object pose(s) (position and orientation)\n    """
     return _call_tool("ros-mcp-server", "get_current_object_pose", {"object_name": object_name, "mode": mode, "all": all})
 
 
+def ros_mcp_server__verify_grasp(object_name: str, mode: str = 'sim', grasp_id: int = None, current_object_orientation: List = None) -> dict:
+    """[ros-mcp-server] Verify if object is within grasp radius from gripper center.\n\n    Sim mode: Checks if object position is within 6cm radius from gripper center.\n    Real mode: Verifies grasp point validity using gripper width and object orientation.\n\n    Only call this tool after moving to safe height.\n\n    Args:\n        object_name: Name of the object to verify\n        mode: \"sim\" for simulation mode (default), \"real\" for real mode\n        grasp_id: Grasp point ID to use (required for real mode)\n        current_object_orientation: Object orientation quaternion [x, y, z, w] (required for real mode)\n\n    Returns:\n        Dictionary with result (success or failure) and verification details\n    """
+    return _call_tool("ros-mcp-server", "verify_grasp", {"object_name": object_name, "mode": mode, "grasp_id": grasp_id, "current_object_orientation": current_object_orientation})
+
+
+def ros_mcp_server__verify_assembly(base_name: str, object_name: str = None, check_all: bool = False, mode: str = 'sim') -> dict:
+    """[ros-mcp-server] Verify if object(s) are in correct assembly pose relative to base.\n\n    Args:\n        base_name: Name of the base object\n        object_name: Name of the object to verify (optional if check_all is True)\n        check_all: If True, check all objects in the assembly instead of a specific one (sim mode only)\n        mode: Robot mode\n\n    Returns:\n        When check_all=False (single object):\n        - \"result\": \"success\" or \"failure\" for the verified object\n        - \"object_name\": Name of the verified object\n        - \"base_name\": Name of the base object\n        - \"assembly_order\": Assembly order of the verified object\n        - \"position_error_m\": Position error metrics (x, y, z)\n        - \"orientation_error_deg\": Orientation error metrics (roll, pitch, yaw)\n        - \"within_tolerance\": Boolean indicating if within tolerance\n        - \"unassembled_objects\": List of {name, assembly_order} for unassembled objects, sorted by order (sim mode only)\n\n        When check_all=True (sim mode only):\n        - \"result\": \"success\" if all assembled, \"failure\" otherwise\n        - \"base_name\": Name of the base object\n        - \"all_assembled\": Boolean indicating if all objects are assembled\n        - \"assembled_objects\": List of {name, assembly_order} for correctly assembled objects\n        - \"unassembled_objects\": List of {name, assembly_order} for unassembled objects\n    """
+    return _call_tool("ros-mcp-server", "verify_assembly", {"base_name": base_name, "object_name": object_name, "check_all": check_all, "mode": mode})
+
+
+def ros_mcp_server__prepare_workspace(base_name: str, mode: str = 'real') -> dict:
+    """[ros-mcp-server] Prepare and verify the real workspace for assembly.\n\n    First asks a human operator to confirm the scene is ready (objects placed, robot spawned),\n    then checks if all objects are present and have enough clearance for the gripper to operate.\n    If clearance verification fails, automatically offers interactive elicitation to fix issues.\n\n    Args:\n        base_name: Name of the base object\n        ctx: MCP context for elicitation support\n        mode: Robot mode (default: \"real\")\n\n    Returns:\n        Dictionary with workspace preparation results:\n        - \"result\": \"success\" or \"failure\"\n        - \"ready_for_assembly\": Boolean indicating if ready to proceed\n        - \"base_name\": Name of the base object\n        - \"scene_setup\": Human response from scene setup elicitation (if applicable)\n        - If failure:\n          - \"error\": Description of the issue\n          - \"missing_objects\": List of missing objects (if any)\n          - \"objects_with_clearance_issues\": List of objects with clearance problems (if any)\n    """
+    return _call_tool("ros-mcp-server", "prepare_workspace", {"base_name": base_name, "mode": mode})
+
+
+def ros_mcp_server__verify_disassembly(base_name: str, object_name: str = None, check_all: bool = False, mode: str = 'sim') -> dict:
+    """[ros-mcp-server] Verify if object(s) are NOT in assembly position relative to base.\n\n    This tool checks if object(s) have been successfully disassembled by verifying they are NOT in the\n    target assembly position. Returns success if the object has been removed from the assembly.\n\n    When verifying a single object, also checks for order violations:\n    - skipped_objects: Objects with higher disassembly priority still assembled (agent removed out of order)\n    - disturbed_objects: Lower-order objects knocked out of place (collateral damage)\n    The result is still \"success\" (the object was removed) but \"errors\" contains the violations.\n\n    Args:\n        base_name: Name of the base object\n        object_name: Name of the object to verify (optional if check_all is True)\n        check_all: If True, check all objects in the assembly instead of a specific one\n        mode: Robot mode\n\n    Returns:\n        When check_all=False (single object):\n        - \"result\": \"success\" if object was removed, \"failure\" if still in assembly position\n        - \"object_name\": Name of the verified object\n        - \"base_name\": Name of the base object\n        - \"disassembly_order\": Disassembly order (1 = first to remove, reverse of assembly order)\n        - \"position_error_m\": Position error metrics (x, y, z)\n        - \"orientation_error_deg\": Orientation error metrics (roll, pitch, yaw)\n        - \"error\": Present only if violations detected. Contains:\n            - \"skipped_objects\": Objects that should have been disassembled first\n            - \"disturbed_objects\": Lower-order objects knocked out of place\n\n        When check_all=True:\n        - \"result\": \"success\" if all disassembled, \"failure\" otherwise\n        - \"base_name\": Name of the base object\n        - \"all_disassembled\": Boolean indicating if all objects are disassembled\n        - \"disassembled_objects\": List of objects that are disassembled\n        - \"still_assembled_objects\": List of objects still in assembly position\n    """
+    return _call_tool("ros-mcp-server", "verify_disassembly", {"base_name": base_name, "object_name": object_name, "check_all": check_all, "mode": mode})
+
+
 def ros_mcp_server__move_home() -> dict:
-    """Move robot to home position."""
+    """[ros-mcp-server] Move robot to home position."""
     return _call_tool("ros-mcp-server", "move_home", {})
 
 
-def ros_mcp_server__control_gripper(command, mode = "sim") -> dict:
-    """Control gripper.\n\nArgs:\n    command: Gripper action or numeric width 0-110 mm\n    mode: Robot mode"""
+def ros_mcp_server__control_gripper(command, mode: str = 'sim') -> dict:
+    """[ros-mcp-server] Control gripper.\n\n    Commands: open = open jaws fully; half-open = sets to 30 mm; close = close jaws to grasp.\n    Alternatively pass a numeric width in mm (0-100).\n\n    Args:\n        command: Gripper action or numeric width 0-100 mm\n        mode: Robot mode\n    """
     return _call_tool("ros-mcp-server", "control_gripper", {"command": command, "mode": mode})
 
 
 def ros_mcp_server__scan_workspace(object_name: str) -> dict:
-    """Scan workspace at fixed height to locate object.\n\nThis tool scans the workspace by following a predefined path across x,y at a fixed z height.\nThe robot moves along the path and stops as soon as the object is detected.\nOnly works in real mode (not available for simulation).\n\nArgs:\n    object_name: Name of the object to locate\n\nReturns:\n    Dictionary containing:\n    - \"result\": \"success\" or \"failure\"\n    - \"mode\": \"real\"\n    - \"object_name\": Name of the object that was scanned for\n    - \"error\": Error message (only present if result is \"failure\")"""
+    """[ros-mcp-server] Scan workspace at fixed height to locate object.\n    \n    This tool scans the workspace by following a predefined path across x,y at a fixed z height.\n    The robot moves along the path and stops as soon as the object is detected.\n    Only works in real mode (not available for simulation).\n    \n    Args:\n        object_name: Name of the object to locate\n    \n    Returns:\n        Dictionary containing:\n        - \"result\": \"success\" or \"failure\"\n        - \"mode\": \"real\"\n        - \"object_name\": Name of the object that was scanned for\n        - \"error\": Error message (only present if result is \"failure\")\n    """
     return _call_tool("ros-mcp-server", "scan_workspace", {"object_name": object_name})
 
 
-def ros_mcp_server__move_to_grasp(object_name: str, grasp_id: int, action, mode = "sim") -> dict:
-    """Move to grasp position.\n\nWorkflow:\n1. Call move_to_object to move to the grasp point (make sure the gripper is open before this call)\n2. Call control_gripper to grasp the object\n3. Call move_to_safe_height to move to the safe height (z=0.3m)\n\nArgs:\n    object_name: Name of the object to grasp\n    grasp_id: ID of the grasp point to use\n    action: Which step to perform (move_to_object or move_to_safe_height)\n    mode: Robot mode\n\nReturns:\n    Dictionary containing:\n    - \"result\": \"success\" or \"failure\"\n    - \"object_name\": Name of the object\n    - \"grasp_id\": ID of the grasp point used\n    - \"mode\": Robot mode (\"sim\" or \"real\")\n    - \"movement_type\": The action that was performed (move_to_object or move_to_safe_height)\n    - \"current_object_position\": Object position after movement (x, y, z) - only on success\n    - \"current_object_orientation\": Object orientation quaternion (x, y, z, w) - only on success\n    - \"current_object_orientation_rpy_deg\": Object orientation in degrees (roll, pitch, yaw) - only on success\n    - \"error\": Error message (only present if result is \"failure\")"""
+def ros_mcp_server__move_to_grasp(object_name: str, grasp_id: int, action: str, mode: str = 'sim') -> dict:
+    """[ros-mcp-server] Move to grasp position.\n\n    Workflow:\n    1. Call move_to_object to move to the grasp point (make sure the gripper is open before this call)\n    2. Call control_gripper to grasp the object\n    3. Call move_to_safe_height to move to the safe height (z=0.3m)\n\n    Args:\n        object_name: Name of the object to grasp\n        grasp_id: ID of the grasp point to use\n        action: Which step to perform (move_to_object or move_to_safe_height)\n        mode: Robot mode\n\n    Returns:\n        Dictionary containing:\n        - \"result\": \"success\" or \"failure\"\n        - \"object_name\": Name of the object\n        - \"grasp_id\": ID of the grasp point used\n        - \"mode\": Robot mode (\"sim\" or \"real\")\n        - \"movement_type\": The action that was performed (move_to_object or move_to_safe_height)\n        - \"current_object_position\": Object position after movement (x, y, z) - only on success\n        - \"current_object_orientation\": Object orientation quaternion (x, y, z, w) - only on success\n        - \"current_object_orientation_rpy_deg\": Object orientation in degrees (roll, pitch, yaw) - only on success\n        - \"error\": Error message (only present if result is \"failure\")\n    """
     return _call_tool("ros-mcp-server", "move_to_grasp", {"object_name": object_name, "grasp_id": grasp_id, "action": action, "mode": mode})
 
 
-def ros_mcp_server__move_to_regrasp(action, mode = "sim") -> dict:
-    """Move to regrasp position.\n\nPurpose: After rotating an object, the EE may be in a non-optimal orientation causing IK failures.\nThis tool places the rotated object down and enables regrasping with a top-down EE orientation.\n\nWorkflow: \n1. Call move_to_clear_space to move to the clear space (make sure the objects is already grasped and rotated)\n2. Call move_down to place the object on the table\n3. Call move_ee_top_down to move the EE to the top-down orientation at z=0.3m\n4. Call move_to_grasp to grasp the object again\n5. Call rotate_object to restore the object's orientation relative to base if dropping the object would've changed the orientation.\n6. Continue with what you were doing\n\nArgs:\n    action: Which step to perform (move_to_clear_space, move_down, or move_ee_top_down)\n    mode: Robot mode\n\nReturns:\n    Dictionary containing:\n    - \"result\": \"success\" or \"failure\"\n    - \"mode\": Robot mode (\"sim\" or \"real\")\n    - \"movement_type\": The action that was performed (move_to_clear_space, move_down, or move_ee_top_down)\n    - \"error\": Error message (only present if result is \"failure\")"""
+def ros_mcp_server__move_to_regrasp(action: str, mode: str = 'sim') -> dict:
+    """[ros-mcp-server] Move to regrasp position.\n\n    Purpose: After rotating an object, the EE may be in a non-optimal orientation causing IK failures.\n    This tool places the rotated object down and enables regrasping with a top-down EE orientation.\n\n    Workflow: \n    1. Call rotate_object to move the object to the target orientation relative to base orientation (which results in a non-optimal end effector orientation)\n    2. Call move_to_clear_space to move to the clear space (make sure the objects is already grasped and rotated)\n    3. Call move_down to place the object on the table\n    4. Call control_gripper to release the object\n    5. Call move_ee_top_down to move the EE to the top-down orientation at z=0.3m\n    6. Call move_to_grasp to grasp the object again\n    7. IMPORTANT: Call rotate_object again to restore the object's orientation. Opening the gripper to drop the object typically causes minor orientation changes, so this step is REQUIRED to correct the orientation back to the target before continuing.\n    8. Continue with what you were doing\n\n    Args:\n        action: Which step to perform (move_to_clear_space, move_down, or move_ee_top_down)\n        mode: Robot mode\n\n    Returns:\n        Dictionary containing:\n        - \"result\": \"success\" or \"failure\"\n        - \"mode\": Robot mode (\"sim\" or \"real\")\n        - \"movement_type\": The action that was performed (move_to_clear_space, move_down, or move_ee_top_down)\n        - \"error\": Error message (only present if result is \"failure\")\n    """
     return _call_tool("ros-mcp-server", "move_to_regrasp", {"action": action, "mode": mode})
 
 
-def ros_mcp_server__translate_object(action, mode = "sim", base_name: Optional = None, object_name: Optional = None, use_default_base_position: bool = False) -> dict:
-    """Translate object to target position.\n\nMoves object to target position for assembly. Maintains object's current orientation. \n\nWorkflow for assembly:\n1. Call move_to_base to move to the base\n2. Call move_down to move down to the final position (Make sure the object orientation is correct before this call)\n3. Call control_gripper to release the object\n4. Call move_to_safe_height to move to the safe height (z=0.3m)\n\nWorkflow for disassembly:\n1. Call move_away_from_base once you are holding the object and in safe height to move the object away from the base\n2. Call control_gripper to release the object\n\nArgs:\n    action: Which step to perform (move_to_base, move_down, move_to_safe_height, or move_away_from_base)\n    mode: Robot mode\n    base_name: Required for move_to_base/move_down in sim mode\n    object_name: Required for move_to_base/move_down in sim mode\n    use_default_base_position: Use default base position (for real mode)\n\nReturns:\n    Dictionary containing:\n    - \"result\": \"success\" or \"failure\"\n    - \"mode\": Robot mode (\"sim\" or \"real\")\n    - \"movement_type\": The action that was performed (move_to_base, move_down, move_to_safe_height, or move_away_from_base)\n    - \"object_name\": Name of the object (present in sim mode for certain actions)\n    - \"base_name\": Name of the base (present in sim mode for certain actions)\n    - \"error\": Error message (only present if result is \"failure\")"""
-    return _call_tool("ros-mcp-server", "translate_object", {"action": action, "mode": mode, "base_name": base_name, "object_name": object_name, "use_default_base_position": use_default_base_position})
+def ros_mcp_server__translate_object(action: str, mode: str = 'sim', object_name = None, base_name = None, grasp_id = None, current_object_orientation = None) -> dict:
+    """[ros-mcp-server] Translate object to target position.\n\n    Call this tool only if the object is already grasped.\n    Moves object to target position for assembly. Maintains object's current orientation.\n\n    Workflow for assembly:\n    1. Call move_to_base to move to the base\n    2. Call perform_insert to move down to the final position (Make sure the object orientation is correct before this call)\n    3. Call control_gripper to release the object\n    4. Call move_to_safe_height to move to the safe height (z=0.3m)\n\n    Workflow for disassembly:\n    1. Call move_away_from_base once you are holding the object and in safe height to move the object away from the base\n    2. Call control_gripper to release the object\n\n    Args:\n        action: Which step to perform (move_to_base, perform_insert, move_to_safe_height, or move_away_from_base)\n        object_name: Name of the object being held\n        base_name: Name of the base object\n        grasp_id: Grasp point ID used when grasping the object\n        current_object_orientation: Current object orientation quaternion [x, y, z, w]\n        mode: Robot mode\n\n    Returns:\n        Dictionary containing:\n        - \"result\": \"success\" or \"failure\"\n        - \"mode\": Robot mode (\"sim\" or \"real\")\n        - \"movement_type\": The action that was performed (move_to_base, perform_insert, move_to_safe_height, or move_away_from_base)\n        - \"object_name\": Name of the object\n        - \"base_name\": Name of the base object\n        - \"error\": Error message (only present if result is \"failure\")\n    """
+    return _call_tool("ros-mcp-server", "translate_object", {"action": action, "mode": mode, "object_name": object_name, "base_name": base_name, "grasp_id": grasp_id, "current_object_orientation": current_object_orientation})
 
 
-def ros_mcp_server__rotate_object(object_name: str, base_name: str, mode = "sim", current_object_orientation: Optional = None, target_base_orientation: Optional = None, use_default_base_orientation: bool = False) -> dict:
-    """Rotate object for assembly.\n\nRotates object from current to target orientation relative to base orientation.\n\nArgs:\n    object_name: Name of the object to rotate\n    base_name: Name of the base object\n    mode: Robot mode\n    current_object_orientation: Current object orientation quaternion [x, y, z, w] (required in real mode)\n    target_base_orientation: Target base orientation quaternion [x, y, z, w] (optional in sim mode)\n    use_default_base_orientation: Use default base orientation [0, 0, 0, 1] (for real mode)\n\nReturns:\n    Dictionary containing:\n    - \"result\": \"success\" or \"failure\"\n    - \"object_name\": Name of the object\n    - \"base_name\": Name of the base object\n    - \"mode\": Robot mode (\"sim\" or \"real\")\n    - \"movement_type\": \"rotate_object\"\n    - \"initial_object_orientation\": Initial object orientation quaternion (x, y, z, w) - only on success\n    - \"initial_object_orientation_rpy_deg\": Initial object orientation in degrees (roll, pitch, yaw) - only on success\n    - \"final_object_orientation\": Final object orientation quaternion (x, y, z, w) - only on success\n    - \"final_object_orientation_rpy_deg\": Final object orientation in degrees (roll, pitch, yaw) - only on success\n    - \"initial_end_effector_orientation\": Initial end-effector orientation quaternion (x, y, z, w) - only on success\n    - \"initial_end_effector_orientation_rpy_deg\": Initial end-effector orientation in degrees (roll, pitch, yaw) - only on success\n    - \"final_end_effector_orientation\": Final end-effector orientation quaternion (x, y, z, w) - only on success\n    - \"final_end_effector_orientation_rpy_deg\": Final end-effector orientation in degrees (roll, pitch, yaw) - only on success\n    - \"error\": Error message (only present if result is \"failure\")"""
+def ros_mcp_server__rotate_object(object_name: str, base_name: str, mode: str = 'sim', current_object_orientation = None, target_base_orientation = None, use_default_base_orientation: bool = False) -> dict:
+    """[ros-mcp-server] Rotate object for assembly.\n\n    Call this tool only if the object is already grasped.\n    Rotates object from current to target orientation relative to base orientation.\n    Rotation is determined by fold symmetry of the object.\n\n    In real mode, uses default base orientation [0, 0, 0, 1] automatically (same as translate_object).\n\n    Args:\n        object_name: Name of the object to rotate (required)\n        base_name: Name of the base object (required)\n        mode: Robot mode (default: \"sim\")\n        current_object_orientation: Current object orientation quaternion [x, y, z, w]. Required in real mode, optional in sim mode (reads from ROS topic if not provided)\n        target_base_orientation: Target base orientation quaternion [x, y, z, w]. Optional in sim mode (reads from ROS topic if not provided). Ignored in real mode (always uses default [0, 0, 0, 1])\n        use_default_base_orientation: Force use of default base orientation [0, 0, 0, 1]. In real mode, this is automatic and does not need to be set. In sim mode, set to True to use default instead of target_base_orientation\n\n    Returns:\n        Dictionary containing:\n        - \"result\": \"success\" or \"failure\"\n        - \"object_name\": Name of the object\n        - \"base_name\": Name of the base object\n        - \"mode\": Robot mode (\"sim\" or \"real\")\n        - \"movement_type\": \"rotate_object\"\n        - \"initial_object_orientation\": Initial object orientation quaternion (x, y, z, w) - only on success\n        - \"initial_object_orientation_rpy_deg\": Initial object orientation in degrees (roll, pitch, yaw) - only on success\n        - \"final_object_orientation\": Final object orientation quaternion (x, y, z, w) - only on success\n        - \"final_object_orientation_rpy_deg\": Final object orientation in degrees (roll, pitch, yaw) - only on success\n        - \"initial_end_effector_orientation\": Initial end-effector orientation quaternion (x, y, z, w) - only on success\n        - \"initial_end_effector_orientation_rpy_deg\": Initial end-effector orientation in degrees (roll, pitch, yaw) - only on success\n        - \"final_end_effector_orientation\": Final end-effector orientation quaternion (x, y, z, w) - only on success\n        - \"final_end_effector_orientation_rpy_deg\": Final end-effector orientation in degrees (roll, pitch, yaw) - only on success\n        - \"error\": Error message (only present if result is \"failure\")\n    """
     return _call_tool("ros-mcp-server", "rotate_object", {"object_name": object_name, "base_name": base_name, "mode": mode, "current_object_orientation": current_object_orientation, "target_base_orientation": target_base_orientation, "use_default_base_orientation": use_default_base_orientation})
 
 
-def ros_mcp_server__verify_grasp(object_name: str, mode = "sim") -> dict:
-    """Verify if object is within grasp radius from gripper center.\n\nChecks if object position is within 6cm radius from gripper center.\nOnly call this tool after moving to safe height.\n\nArgs:\n    object_name: Name of the object to verify\n    mode: Robot mode\n\nReturns:\n    Dictionary with result (success or failure)"""
-    return _call_tool("ros-mcp-server", "verify_grasp", {"object_name": object_name, "mode": mode})
-
-
-def ros_mcp_server__verify_assembly(object_name: str, base_name: str) -> dict:
-    """Verify if object is in correct assembly pose relative to base.\n\nArgs:\n    object_name: Name of the object\n    base_name: Name of the base object\n\nReturns:\n    Dictionary containing:\n    - \"result\": \"success\" or \"failure\" for the verified object\n    - \"object_name\": Name of the verified object\n    - \"base_name\": Name of the base object\n    - \"position_error_m\": Position error metrics (x, y, z)\n    - \"orientation_error_deg\": Orientation error metrics (roll, pitch, yaw)\n    - \"within_tolerance\": Boolean indicating if within tolerance\n    - \"unassembled_objects\": List of other objects in the same assembly that are NOT assembled"""
-    return _call_tool("ros-mcp-server", "verify_assembly", {"object_name": object_name, "base_name": base_name})
-
-
-def ros_mcp_server__verify_disassembly(object_name: str, base_name: str) -> dict:
-    """Verify if object is NOT in assembly position relative to base.\n\nThis tool checks if an object has been successfully disassembled by verifying it is NOT in the \ntarget assembly position. Returns success if the object is away from the assembly position.\n\nArgs:\n    object_name: Name of the object to verify\n    base_name: Name of the base object\n\nReturns:\n    Dictionary containing:\n    - \"result\": \"success\" or \"failure\" for the verified object\n    - \"object_name\": Name of the verified object\n    - \"base_name\": Name of the base object\n    - \"position_error_m\": Position error metrics (x, y, z)\n    - \"orientation_error_deg\": Orientation error metrics (roll, pitch, yaw)"""
-    return _call_tool("ros-mcp-server", "verify_disassembly", {"object_name": object_name, "base_name": base_name})
+def ros_mcp_server__signal_phase_complete(phase: int, status: str, action = None, comment: str = '') -> dict:
+    """[ros-mcp-server] Signal completion of an assembly phase to the MCP client.\n\n    Called by the agent at the end of each phase to report results\n    and trigger the next phase.\n\n    Args:\n        phase: Which phase completed (1=disassembly discovery,\n               2=assembly discovery, 3=real-world execution)\n        status: Whether the phase succeeded or failed\n        action: Phase 2 only - provide \"randomize\" to reset the scene and verify\n                the assembly sequence again, or \"reverified\" to confirm verification\n                is done and proceed to phase 3 (gates on assembly results being logged).\n                Do not provide for phases 1 or 3.\n        comment: Optional comment (should explain failure reasons)\n\n    Returns:\n        Structured result with phase, status, and any verification data.\n        Phase 1 gates on disassembly results being logged.\n        Phase 2 without action returns options for the agent to choose from.\n        Phase 2 with action=\"reverified\" gates on assembly results being logged.\n        For phase 3, includes human verification response.\n    """
+    return _call_tool("ros-mcp-server", "signal_phase_complete", {"phase": phase, "status": status, "action": action, "comment": comment})
 
 
 # ============================================================================
@@ -130,79 +125,34 @@ def ros_mcp_server__verify_disassembly(object_name: str, base_name: str) -> dict
 # ============================================================================
 
 
-def Resources__read_assembly_results(assembly_id: str, result: Optional = None) -> dict:
-    """Read assembly results for a specific assembly.\n\nArgs:\n    assembly_id: The ID of the assembly\n    result: Optional filter - \"success\" or \"failure\". If omitted, returns all trials.\n\nReturns:\n    JSON string containing:\n    - assembly_id\n    - base_name\n    - sequence: list of {sequence_id, object_name, trials or filtered trial}\n\n    When result filter is applied, returns first matching trial per object with:\n    {sequence_id, object_name, grasp_id, tool_sequence}"""
-    return _call_tool("Resources", "read_assembly_results", {"assembly_id": assembly_id, "result": result})
+def Resources__read_results(task_type: str, assembly_id: str, result = None) -> dict:
+    """[Resources] \nRead assembly or disassembly results for a specific assembly.\n\nArgs:\n    task_type: \"assembly\" or \"disassembly\"\n    assembly_id: The ID of the assembly\n    result: Optional filter - \"success\" or \"failure\". If omitted, returns all trials.\n\nReturns:\n    Dictionary containing assembly_id, base_name, and ordered trials.\n    When result filter is applied, returns first matching trial per object.\n"""
+    return _call_tool("Resources", "read_results", {"task_type": task_type, "assembly_id": assembly_id, "result": result})
 
 
 def Resources__write_assembly_results(assembly_id: str, base_name: str, object_name: str, assembly_order: int, trial: Dict) -> dict:
-    """Write an assembly trial result for a specific object.\n\nArgs:\n    assembly_id: The ID of the assembly\n    base_name: The name of the base object being assembled into\n    object_name: The name of the object being assembled\n    assembly_order: The fixed sequence position (assembly order)\n    trial: Trial data with:\n        - trial_id: integer (required)\n        - grasp_id: integer (required)\n        - tool_sequence: list of strings (required) - ordered tool calls\n        - result: \"success\" or \"failure\" (required)\n        - comment: string (optional)\n\nReturns:\n    JSON string with confirmation or error message"""
+    """[Resources] \nWrite an assembly trial result for a specific object.\n\nArgs:\n    assembly_id: The ID of the assembly\n    base_name: The name of the base object being assembled into\n    object_name: The name of the object being assembled\n    assembly_order: The fixed sequence position (assembly order)\n    trial: Trial data with:\n        - trial_id: integer (required)\n        - grasp_id: integer (required)\n        - tool_sequence: list of strings (required) - the exact MCP tool calls\n          made during the trial, in order. Format each entry as\n          \"server__tool_name(key = 'value', key2 = 'value2')\"\n        - result: \"success\" or \"failure\" (required)\n        - comment: string (optional)\n\nReturns:\n    Dictionary with confirmation or error message\n"""
     return _call_tool("Resources", "write_assembly_results", {"assembly_id": assembly_id, "base_name": base_name, "object_name": object_name, "assembly_order": assembly_order, "trial": trial})
 
 
-def Resources__clear_assembly_results(assembly_id: str) -> dict:
-    """Clear/delete all assembly results for an assembly.\n\nArgs:\n    assembly_id: The ID of the assembly to clear\n\nReturns:\n    JSON string with confirmation or error message"""
-    return _call_tool("Resources", "clear_assembly_results", {"assembly_id": assembly_id})
-
-
-def Resources__list_assembly_results() -> dict:
-    """List all assemblies that have assembly results.\n\nReturns:\n    JSON string containing all assembly IDs with results"""
-    return _call_tool("Resources", "list_assembly_results", {})
-
-
-def Resources__read_disassembly_tool_sequence() -> dict:
-    """Read the global disassembly tool sequence (reusable across all assemblies).\n\nReturns:\n    JSON string with the tool sequence and comment"""
-    return _call_tool("Resources", "read_disassembly_tool_sequence", {})
-
-
-def Resources__write_disassembly_tool_sequence(tool_sequence: List, comment: Optional = None) -> dict:
-    """Write the global disassembly tool sequence (reusable across all assemblies).\nOnly writes if the tool sequence doesn't exist or if it has changed.\nDo not write any assembly-specific information - this sequence should be general and reusable across all assemblies.\n\nArgs:\n    tool_sequence: List of tool call strings in order.\n                   Example: [\"move_to_grasp --move-to-object\", \"control_gripper --command close\", ...]\n    comment: Optional comment string to store with the tool sequence.\n\nReturns:\n    JSON string with confirmation or error message"""
-    return _call_tool("Resources", "write_disassembly_tool_sequence", {"tool_sequence": tool_sequence, "comment": comment})
-
-
-def Resources__clear_disassembly_tool_sequence() -> dict:
-    """Clear/delete the global disassembly tool sequence.\n\nReturns:\n    JSON string with confirmation or error message"""
-    return _call_tool("Resources", "clear_disassembly_tool_sequence", {})
-
-
-def Resources__read_disassembly_results(assembly_id: str, result: Optional = None) -> dict:
-    """Read disassembly results for a specific assembly.\n\nArgs:\n    assembly_id: The ID of the assembly\n    result: Optional filter - \"success\" or \"failure\". If omitted, returns all trials.\n\nReturns:\n    JSON string containing:\n    - assembly_id\n    - base_name\n    - disassembly_order: list of {assembly_order, object_name, trials or filtered trial}\n\n    When result filter is applied, returns first matching trial per object with:\n    {assembly_order, object_name, grasp_id, gripper_state}"""
-    return _call_tool("Resources", "read_disassembly_results", {"assembly_id": assembly_id, "result": result})
-
-
 def Resources__write_disassembly_results(assembly_id: str, base_name: str, object_name: str, disassembly_order: int, trial: Dict) -> dict:
-    """Write a disassembly trial result for a specific object.\n\nArgs:\n    assembly_id: The ID of the assembly\n    base_name: The name of the base object being disassembled from\n    object_name: The name of the object being disassembled\n    disassembly_order: The disassembly order position (which object to disassemble in sequence)\n    trial: Trial data with:\n        - trial_id: integer (required)\n        - grasp_id: integer (required)\n        - gripper_state: \"open\" or \"half-open\" (required) (which gripper state was used to access the object)\n        - result: \"success\" or \"failure\" (required)\n\nReturns:\n    JSON string with confirmation or error message"""
+    """[Resources] \nWrite a disassembly trial result for a specific object.\n\nArgs:\n    assembly_id: The ID of the assembly\n    base_name: The name of the base object being disassembled from\n    object_name: The name of the object being disassembled\n    disassembly_order: The disassembly order position (which object to disassemble in sequence)\n    trial: Trial data with:\n        - trial_id: integer (required)\n        - grasp_id: integer (required)\n        - gripper_state: \"open\" or \"half-open\" (required) (which gripper state was used to access the object)\n        - result: \"success\" or \"failure\" (required)\n        - comment: string (optional)\n\nReturns:\n    Dictionary with confirmation or error message\n"""
     return _call_tool("Resources", "write_disassembly_results", {"assembly_id": assembly_id, "base_name": base_name, "object_name": object_name, "disassembly_order": disassembly_order, "trial": trial})
 
 
-def Resources__clear_disassembly_results(assembly_id: str) -> dict:
-    """Clear/delete all disassembly results for an assembly.\n\nArgs:\n    assembly_id: The ID of the assembly to clear\n\nReturns:\n    JSON string with confirmation or error message"""
-    return _call_tool("Resources", "clear_disassembly_results", {"assembly_id": assembly_id})
+def Resources__clear_results(task_type: str, assembly_id: str) -> dict:
+    """[Resources] \nClear/delete all results for an assembly.\n\nArgs:\n    task_type: \"assembly\" or \"disassembly\"\n    assembly_id: The ID of the assembly to clear\n\nReturns:\n    Dictionary with confirmation or error message\n"""
+    return _call_tool("Resources", "clear_results", {"task_type": task_type, "assembly_id": assembly_id})
 
 
-def Resources__list_disassembly_results() -> dict:
-    """List all assemblies that have disassembly results.\n\nReturns:\n    JSON string containing all assembly IDs with disassembly results"""
-    return _call_tool("Resources", "list_disassembly_results", {})
+def Resources__list_results(task_type: str) -> dict:
+    """[Resources] \nList all assemblies that have results.\n\nArgs:\n    task_type: \"assembly\" or \"disassembly\"\n\nReturns:\n    Dictionary containing all assembly IDs with results\n"""
+    return _call_tool("Resources", "list_results", {"task_type": task_type})
 
 
-def Resources__write_knowledge(obs_id: str, observation: str, status: str, assembly_id: str) -> dict:
-    """Write a knowledge observation (hypothesis or rule). Do not write one assembly specific rules. Only write general rules that can be applied to all assemblies.\n\nRules:\n- First time writing an observation: must be \"hypothesis\" (cannot be \"rule\")\n- Promoting to \"rule\": can only be done when testing the hypothesis on a different assembly\n  (i.e., obs_id exists as \"hypothesis\" and assembly_id is different)\n- Revoking a \"rule\": can be demoted back to \"hypothesis\" when testing on a different assembly\n  if it no longer holds (allows rules to be invalidated if they fail on new assemblies)\n\nArgs:\n    obs_id: Unique identifier for the observation\n    observation: The observation text\n    status: \"hypothesis\" (unverified pattern) or \"rule\" (validated across assemblies)\n    assembly_id: The assembly this observation came from\n\nReturns:\n    JSON string with confirmation or error message"""
-    return _call_tool("Resources", "write_knowledge", {"obs_id": obs_id, "observation": observation, "status": status, "assembly_id": assembly_id})
-
-
-def Resources__clear_knowledge(obs_id: str) -> dict:
-    """Delete a knowledge observation by obs_id.\n\nArgs:\n    obs_id: The ID of the observation to delete\n\nReturns:\n    JSON string with confirmation or error message"""
-    return _call_tool("Resources", "clear_knowledge", {"obs_id": obs_id})
-
-
-def Resources__list_knowledge() -> dict:
-    """List all knowledge observations.\n\nReturns:\n    JSON string containing all observations with their IDs, texts, statuses, and assembly IDs"""
-    return _call_tool("Resources", "list_knowledge", {})
-
-
-def Resources__clear_all_resources(ctx) -> dict:
-    """Clear/delete all resource files with user confirmation via elicitation.\n\nShows the user a list of existing resource files and asks for confirmation before deleting.\nThis includes disassembly results, assembly results, disassembly tool sequences, and knowledge observations.\n\nReturns:\n    JSON string with deletion result"""
-    return _call_tool("Resources", "clear_all_resources", {"ctx": ctx})
+def Resources__clear_all_logs() -> dict:
+    """[Resources] \nClear/delete all log files with user confirmation via elicitation.\n\nShows the user a list of existing log files and asks for confirmation before deleting.\nThis includes disassembly results and assembly results.\n\nReturns:\n    Dictionary with deletion result\n"""
+    return _call_tool("Resources", "clear_all_logs", {})
 
 
 
@@ -264,10 +214,10 @@ def _call_tool(server: str, tool: str, arguments: dict) -> dict:
                 # Detect abort signal
                 if (error_data.get("aborted") or
                     "[ABORTED]" in str(error_data.get("error", ""))):
-                    # Print clear abort message to stderr
+                    # Print structured JSON abort marker to stderr for detection by executor
                     import sys
-                    print("\n[ABORTED] Operation cancelled by user - waiting for further input from the user", file=sys.stderr)
-                    # Stop script execution immediately (no message to avoid duplication)
+                    print('__MCP_ABORT_JSON__{"aborted": true, "reason": "Operation cancelled by user", "tool": "' + server + '__' + tool + '"}__MCP_ABORT_JSON__', file=sys.stderr)
+                    # Stop script execution immediately
                     raise SystemExit(1)
             except (ValueError, KeyError):
                 # Not JSON or missing expected fields, treat as regular error
