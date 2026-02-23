@@ -84,13 +84,26 @@ legitimate hyphens in string arguments like `"half-open"` or `"pick-and-place"`.
 
 ### String safety
 
-The preprocessing operates on the raw code text. Hyphens inside string literals are
-preserved because:
-- The exact replacements only match known `server__tool` patterns
-- The regex only matches patterns ending with `__` (double underscore), which don't
-  occur in natural language strings
+Both phases only operate on non-string segments of the code. Before applying any
+replacements, `_fix_hyphenated_names()` tokenizes the source into string literals
+and code segments using a regex that matches Python string delimiters (`'''`, `"""`,
+`'`, `"`, and their `f`-string variants). Only the code segments are passed through
+`_replace_hyphens()`; string literals are re-joined unchanged.
 
-Verified against failing model outputs — zero false positives on string content.
+This is necessary because models sometimes write code that compares runtime data
+against hyphenated tool names in string literals:
+
+```python
+# Runtime data from stored tool sequences keeps hyphens
+name = call_str.split("(")[0]  # → "ros-mcp-server__control_gripper"
+
+# String literal must keep hyphens to match
+if name == 'ros-mcp-server__control_gripper':
+    fn = ros_mcp_server__control_gripper  # ← identifier, gets underscored
+```
+
+Without string-aware tokenization, both the identifier and the string literal
+would be converted to underscores, breaking the comparison against runtime data.
 
 ## Comparison with Other Implementations
 

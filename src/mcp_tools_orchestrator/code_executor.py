@@ -85,19 +85,44 @@ class CodeExecutor:
         'ros-mcp-server__move_home') into Python code, where hyphens are
         parsed as subtraction. This fixes those names to their underscored
         form (e.g. 'ros_mcp_server__move_home').
+
+        Only replaces hyphens outside of string literals so that data
+        comparisons (e.g. name == 'ros-mcp-server__tool') are preserved.
         """
-        # Apply known exact replacements first (longest-first)
+        # Tokenize code into string literals and non-string segments.
+        # Matches single-quoted, double-quoted, triple-single, triple-double,
+        # and f-string variants. Longest delimiters first to avoid partial matches.
+        string_pattern = re.compile(
+            r"f?'''[\s\S]*?'''|f?\"\"\"[\s\S]*?\"\"\"|f?'[^'\n]*'|f?\"[^\"\n]*\""
+        )
+
+        result = []
+        last_end = 0
+        for m in string_pattern.finditer(code):
+            # Process the non-string segment before this match
+            segment = code[last_end:m.start()]
+            result.append(self._replace_hyphens(segment))
+            # Keep the string literal unchanged
+            result.append(m.group(0))
+            last_end = m.end()
+
+        # Process any remaining non-string segment after the last match
+        result.append(self._replace_hyphens(code[last_end:]))
+        return ''.join(result)
+
+    def _replace_hyphens(self, segment: str) -> str:
+        """Apply hyphen-to-underscore replacements on a non-string code segment."""
+        # Apply known exact replacements (longest-first)
         for hyphenated, underscored in self._hyphen_replacements:
-            code = code.replace(hyphenated, underscored)
+            segment = segment.replace(hyphenated, underscored)
 
         # Catch-all: replace any remaining hyphens in identifiers before '__'
-        # Handles partial/malformed variants like 'ros_mcp-server__tool'
-        code = re.sub(
+        segment = re.sub(
             r'([A-Za-z0-9_]*)-([A-Za-z0-9_-]*__)',
             lambda m: m.group(0).replace('-', '_'),
-            code,
+            segment,
         )
-        return code
+        return segment
 
     def execute_code(self, code: str, timeout: int = 3600) -> Dict[str, Any]:
         """Execute policy code with access to unified API.
