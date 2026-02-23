@@ -7,7 +7,7 @@ import requests
 import json
 from typing import Dict, Any, Optional, List
 
-_IPC_URL = "http://localhost:33245"
+_IPC_URL = "http://localhost:35113"
 
 
 # ============================================================================
@@ -15,14 +15,64 @@ _IPC_URL = "http://localhost:33245"
 # ============================================================================
 
 
-def isaac_sim__save_scene_state() -> dict:
-    """[isaac-sim] Saves current object poses to a JSON file so it can be retrieved later."""
-    return _call_tool("isaac-sim", "save_scene_state", {})
+def isaac_sim__execute_python_code(code: str = '') -> dict:
+    """[isaac-sim] Execute Python code directly in Isaac Sim's environment with access to Omniverse APIs."""
+    return _call_tool("isaac-sim", "execute_python_code", {"code": code})
 
 
-def isaac_sim__restore_scene_state() -> dict:
-    """[isaac-sim] Restores previously saved object poses from a JSON file to the scene."""
-    return _call_tool("isaac-sim", "restore_scene_state", {})
+def isaac_sim__play_scene() -> dict:
+    """[isaac-sim] Start/resume the simulation timeline in Isaac Sim."""
+    return _call_tool("isaac-sim", "play_scene", {})
+
+
+def isaac_sim__stop_scene() -> dict:
+    """[isaac-sim] Stop the simulation timeline in Isaac Sim."""
+    return _call_tool("isaac-sim", "stop_scene", {})
+
+
+def isaac_sim__assemble_objects(assembly: str = 'fmb1') -> dict:
+    """[isaac-sim] Assemble objects into a specified configuration."""
+    return _call_tool("isaac-sim", "assemble_objects", {"assembly": assembly})
+
+
+def isaac_sim__randomize_object_poses() -> dict:
+    """[isaac-sim] Randomize the positions of non-base objects in /World/Objects."""
+    return _call_tool("isaac-sim", "randomize_object_poses", {})
+
+
+def isaac_sim__randomize_single_object(object_name: str = '') -> dict:
+    """[isaac-sim] Randomize the position of a single named object in a clear workspace area, keeping all other objects fixed."""
+    return _call_tool("isaac-sim", "randomize_single_object", {"object_name": object_name})
+
+
+def isaac_sim__save_scene_state(json_file_path: str = '') -> dict:
+    """[isaac-sim] Saves current object poses to a JSON file so it can be retrieved later. If json_file_path is not provided, a timestamped filename is used automatically."""
+    return _call_tool("isaac-sim", "save_scene_state", {"json_file_path": json_file_path})
+
+
+def isaac_sim__restore_scene_state(json_file_path: str = '') -> dict:
+    """[isaac-sim] Restores previously saved object poses from a JSON file to the scene. If json_file_path is not provided, the most recent save is restored."""
+    return _call_tool("isaac-sim", "restore_scene_state", {"json_file_path": json_file_path})
+
+
+def isaac_sim__add_objects(assembly: str = 'fmb1') -> dict:
+    """[isaac-sim] Add objects to the scene from a predefined assembly folder."""
+    return _call_tool("isaac-sim", "add_objects", {"assembly": assembly})
+
+
+def isaac_sim__delete_objects() -> dict:
+    """[isaac-sim] Delete all objects from /World/Objects and the associated pose publisher graph."""
+    return _call_tool("isaac-sim", "delete_objects", {})
+
+
+def isaac_sim__setup_pose_publisher() -> dict:
+    """[isaac-sim] Create an action graph to publish object poses to ROS2 topic 'objects_poses_sim'."""
+    return _call_tool("isaac-sim", "setup_pose_publisher", {})
+
+
+def isaac_sim__sync_real_poses() -> dict:
+    """[isaac-sim] Subscribe to /objects_poses_real ROS2 topic and update sim object poses to match real-world detected poses."""
+    return _call_tool("isaac-sim", "sync_real_poses", {})
 
 
 # ============================================================================
@@ -118,6 +168,11 @@ def ros_mcp_server__rotate_object(object_name: str, base_name: str, mode: str = 
 def ros_mcp_server__signal_phase_complete(phase: int, status: str, action = None, comment: str = '') -> dict:
     """[ros-mcp-server] Signal completion of an assembly phase to the MCP client.\n\n    Called by the agent at the end of each phase to report results\n    and trigger the next phase.\n\n    Args:\n        phase: Which phase completed (1=disassembly discovery,\n               2=assembly discovery, 3=real-world execution)\n        status: Whether the phase succeeded or failed\n        action: Phase 2 only - provide \"randomize\" to reset the scene and verify\n                the assembly sequence again, or \"reverified\" to confirm verification\n                is done and proceed to phase 3 (gates on assembly results being logged).\n                Do not provide for phases 1 or 3.\n        comment: Optional comment (should explain failure reasons)\n\n    Returns:\n        Structured result with phase, status, and any verification data.\n        Phase 1 gates on disassembly results being logged.\n        Phase 2 without action returns options for the agent to choose from.\n        Phase 2 with action=\"reverified\" gates on assembly results being logged.\n        For phase 3, includes human verification response.\n    """
     return _call_tool("ros-mcp-server", "signal_phase_complete", {"phase": phase, "status": status, "action": action, "comment": comment})
+
+
+def ros_mcp_server__signal_operator(message: str, reason: str = '') -> dict:
+    """[ros-mcp-server] Signal a human operator and wait for confirmation.\n\n    Use this to notify the operator when you need them to perform a physical\n    action and wait for their confirmation before proceeding.\n\n    Args:\n        message: Description of what the robot has done and what the\n                 operator needs to do before the robot can continue.\n        reason: Short tag for the client to categorize the signal\n                (e.g., \"part_replacement\", \"inspection\", \"workspace_setup\").\n\n    Returns:\n        Dictionary with operator response:\n        - \"result\": \"success\" or \"failure\"\n        - \"action\": \"proceed\" or \"abort\"\n        - \"reason\": The reason tag passed by the agent\n        - \"feedback\": Optional operator notes\n    """
+    return _call_tool("ros-mcp-server", "signal_operator", {"message": message, "reason": reason})
 
 
 # ============================================================================

@@ -74,13 +74,48 @@ async def initialize():
     # Initialize API generator
     _generator = UnifiedAPIGenerator()
 
-    # Discover tools via IPC and generate unified API
+    # Discover tools via IPC and generate unified API.
+    # Retry until all whitelisted servers are discovered, because the client
+    # may still be connecting servers when the orchestrator initializes.
     try:
         generated_dir = script_dir / "generated"
         generated_dir.mkdir(exist_ok=True)
         _api_path = str(generated_dir / "unified_api.py")
 
-        _generator.generate_api_from_ipc(_client_ipc_url, _api_path, allowed_servers)
+        max_retries = 15
+        retry_delay = 2  # seconds
+        expected = set(allowed_servers)
+
+        for attempt in range(1, max_retries + 1):
+            try:
+                discovered = _generator.generate_api_from_ipc(
+                    _client_ipc_url, _api_path, allowed_servers
+                )
+            except RuntimeError as e:
+                if attempt < max_retries:
+                    print(f"[Orchestrator] IPC query failed (attempt {attempt}/{max_retries}): {e}")
+                    print(f"[Orchestrator] Retrying in {retry_delay}s...")
+                    await asyncio.sleep(retry_delay)
+                    continue
+                raise
+
+            missing = expected - discovered
+            if not missing:
+                print(f"[Orchestrator] All whitelisted servers discovered: {sorted(discovered)}")
+                break
+
+            if attempt < max_retries:
+                print(
+                    f"[Orchestrator] Missing servers: {sorted(missing)} "
+                    f"(attempt {attempt}/{max_retries}), retrying in {retry_delay}s..."
+                )
+                await asyncio.sleep(retry_delay)
+            else:
+                print(
+                    f"[Orchestrator] WARNING: Max retries reached. "
+                    f"Missing servers: {sorted(missing)}. "
+                    f"Proceeding with: {sorted(discovered)}"
+                )
 
         # Count tools by reading the generated file
         with open(_api_path, 'r') as f:
@@ -93,7 +128,7 @@ async def initialize():
 
         _initialized = True
 
-        print(f"[Orchestrator] Initialized successfully")
+        print(f"[Orchestrator] Initialized successfully ({_server_count} servers, {_tool_count} tools)")
         print(f"[Orchestrator] Generated unified API at: {_api_path}")
 
     except Exception as e:
@@ -327,8 +362,8 @@ async def list_available_tools(include_descriptions: bool = False) -> Dict[str, 
 
 
 if __name__ == "__main__":
-    # Initialize on startup
-    asyncio.run(initialize())
-
-    # Run the MCP server
+    # Don't initialize eagerly — the stdio transport must start first so the
+    # client can complete the handshake. Initialization happens lazily on the
+    # first tool call (via `if not _initialized: await initialize()` in each
+    # handler), by which time all servers are connected and IPC is available.
     mcp.run(transport="stdio")

@@ -304,7 +304,7 @@ def _call_tool(server: str, tool: str, arguments: dict) -> dict:
         ipc_url: str,
         output_path: str,
         allowed_servers: List[str] = None,
-    ):
+    ) -> set:
         """Generate unified API by querying the client's IPC /list_tools endpoint.
 
         This discovers all tools from all connected MCP servers, including those
@@ -314,6 +314,9 @@ def _call_tool(server: str, tool: str, arguments: dict) -> dict:
             ipc_url: URL of the client's IPC server
             output_path: Path to write the generated unified_api.py
             allowed_servers: If provided, only include tools from these servers
+
+        Returns:
+            Set of discovered server names (after whitelist filtering)
         """
         print(f"[Orchestrator] Discovering tools via IPC: {ipc_url}/list_tools")
 
@@ -376,7 +379,7 @@ def _call_tool(server: str, tool: str, arguments: dict) -> dict:
         print(f"[Orchestrator] Generated unified API at: {output_path}")
         print(f"[Orchestrator] Total: {len(servers)} servers, {total_tools} tools")
 
-        return output_path
+        return set(servers.keys())
 
     def generate_api_from_config(
         self,
