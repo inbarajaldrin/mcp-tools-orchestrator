@@ -1,8 +1,14 @@
 """
 Code Executor - Executes policy code with access to the unified API.
+
+Supports persistent sessions: variables from one execution can be saved to disk
+and restored in the next call with the same session_id. This avoids redundant
+recomputation across sequential calls (e.g., multi-step robot manipulation).
 """
 
+import json
 import os
+import pickle
 import re
 import sys
 import subprocess
@@ -10,6 +16,15 @@ import tempfile
 import time
 from pathlib import Path
 from typing import Dict, Any
+
+
+# Directory for session state files — follows MCP_CLIENT_OUTPUT_DIR convention
+# so the client can manage (inspect, clear) session files externally
+_base_output = os.getenv("MCP_CLIENT_OUTPUT_DIR", "").strip()
+if _base_output:
+    _SESSIONS_DIR = Path(_base_output) / "orchestrator_sessions"
+else:
+    _SESSIONS_DIR = Path(tempfile.gettempdir()) / "mcp_orchestrator_sessions"
 
 
 class CodeExecutor:
@@ -25,6 +40,8 @@ class CodeExecutor:
         self.api_path = Path(api_path)
         self.ipc_url = ipc_url
         self._hyphen_replacements = self._build_hyphen_replacements()
+        # Ensure sessions directory exists
+        _SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
 
     def _build_hyphen_replacements(self) -> list:
         """Build a list of (hyphenated, underscored) pairs from the unified API.
@@ -124,12 +141,26 @@ class CodeExecutor:
         )
         return segment
 
-    def execute_code(self, code: str, timeout: int = 3600) -> Dict[str, Any]:
+    def _session_path(self, session_id: str) -> Path:
+        """Get the pickle file path for a session."""
+        # Sanitize session_id to be filesystem-safe
+        safe_id = re.sub(r'[^a-zA-Z0-9_-]', '_', session_id)
+        return _SESSIONS_DIR / f"{safe_id}.pkl"
+
+    def execute_code(
+        self,
+        code: str,
+        timeout: int = 3600,
+        session_id: str = "",
+        persistent: bool = False,
+    ) -> Dict[str, Any]:
         """Execute policy code with access to unified API.
 
         Args:
             code: Python code to execute
             timeout: Execution timeout in seconds
+            session_id: Session identifier for persistent state
+            persistent: If True, save/restore variables across calls
 
         Returns:
             Dictionary with execution results (output, status, returncode)
@@ -147,7 +178,7 @@ class CodeExecutor:
                 mode="w", suffix=".py", delete=False
             ) as f:
                 # Wrap the user code with necessary imports and setup
-                wrapped_code = self._wrap_code(code)
+                wrapped_code = self._wrap_code(code, session_id=session_id, persistent=persistent)
                 f.write(wrapped_code)
                 temp_file = f.name
 
@@ -262,11 +293,24 @@ class CodeExecutor:
                     if stderr:
                         output += "\n" + stderr if output else stderr
 
-                    return {
+                    result = {
                         "output": output,
                         "returncode": returncode,
                         "status": "success" if returncode == 0 else "failed",
                     }
+
+                    # Include session info if persistent
+                    if persistent and session_id and returncode == 0:
+                        sess_path = self._session_path(session_id)
+                        if sess_path.exists():
+                            try:
+                                saved = pickle.loads(sess_path.read_bytes())
+                                result["session_id"] = session_id
+                                result["session_vars"] = list(saved.keys())
+                            except Exception:
+                                pass
+
+                    return result
             except Exception as inner_e:
                 # Close file handles on inner exception
                 try:
@@ -310,18 +354,28 @@ class CodeExecutor:
                 "status": "error",
             }
 
-    def _wrap_code(self, code: str) -> str:
+    def _wrap_code(
+        self, code: str, session_id: str = "", persistent: bool = False
+    ) -> str:
         """Wrap user code with necessary imports and setup.
+
+        When persistent=True, injects:
+        - A preamble that restores saved variables from the session pickle
+        - An epilogue that saves all user-defined variables back to disk
 
         Args:
             code: User's policy code
+            session_id: Session identifier (empty = no session)
+            persistent: Whether to inject session save/restore logic
 
         Returns:
             Wrapped code ready for execution
         """
         api_dir = str(self.api_path.parent)
+        sess_path = str(self._session_path(session_id)) if session_id else ""
 
-        wrapped = f"""import sys
+        # Base preamble (always present)
+        preamble = f"""import sys
 import os
 from typing import Dict, Any, List, Optional
 
@@ -335,11 +389,71 @@ from datetime import datetime, timedelta
 
 # Set the IPC URL environment variable
 os.environ['MCP_ORCHESTRATOR_IPC_URL'] = '{self.ipc_url}'
-
-# User's policy code:
-{code}
 """
-        return wrapped
+
+        # Session restore (injected before user code)
+        if persistent and sess_path:
+            preamble += f"""
+# --- Session restore ---
+import pickle as _pkl
+_session_path = '{sess_path}'
+_session_vars_before = set()
+try:
+    if os.path.exists(_session_path):
+        with open(_session_path, 'rb') as _f:
+            _saved = _pkl.load(_f)
+        for _k, _v in _saved.items():
+            globals()[_k] = _v
+        _session_vars_before = set(_saved.keys())
+        print(f"[session] Restored {{len(_saved)}} vars from session '{session_id}': {{sorted(_saved.keys())}}")
+except Exception as _e:
+    print(f"[session] Warning: could not restore session: {{_e}}")
+# --- End session restore ---
+"""
+
+        # Session save (injected after user code)
+        epilogue = ""
+        if persistent and sess_path:
+            epilogue = f"""
+
+# --- Session save ---
+import types as _types
+_skip = {{'_pkl', '_f', '_k', '_v', '_saved', '_session_path', '_session_vars_before',
+          '_skip', '_to_save', '_types', '_e',
+          # Standard preamble symbols (not user-defined)
+          'sys', 'os', 'math', 'json', 'datetime', 'timedelta',
+          'Dict', 'Any', 'List', 'Optional'}}
+_to_save = {{}}
+for _k, _v in dict(globals()).items():
+    if _k.startswith('_') or _k in _skip:
+        continue
+    if isinstance(_v, _types.ModuleType):
+        continue
+    # Skip all callables — functions/classes defined in __main__ can't be
+    # unpickled in a different subprocess
+    if callable(_v):
+        continue
+    try:
+        _pkl.dumps(_v)  # Test if picklable
+        _to_save[_k] = _v
+    except Exception:
+        pass  # Skip unpicklable objects silently
+
+try:
+    os.makedirs(os.path.dirname(_session_path), exist_ok=True)
+    with open(_session_path, 'wb') as _f:
+        _pkl.dump(_to_save, _f)
+    _new_vars = set(_to_save.keys()) - _session_vars_before
+    if _new_vars:
+        print(f"[session] Saved {{len(_to_save)}} vars ({{len(_new_vars)}} new: {{sorted(_new_vars)}})")
+    else:
+        print(f"[session] Saved {{len(_to_save)}} vars")
+except Exception as _e:
+    print(f"[session] Warning: could not save session: {{_e}}")
+# --- End session save ---
+"""
+
+        return preamble + "\n# User's policy code:\n" + code + epilogue
 
     def _setup_execution_environment(self) -> Dict[str, str]:
         """Set up execution environment with necessary variables.

@@ -139,7 +139,11 @@ async def initialize():
 
 
 @mcp.tool()
-async def execute_composed_code(code: str) -> Dict[str, Any]:
+async def execute_composed_code(
+    code: str,
+    session_id: str = "",
+    persistent: bool = False,
+) -> Dict[str, Any]:
     """Execute Python code with access to tools from all connected MCP servers.
 
     This tool enables writing Python code that orchestrates
@@ -152,6 +156,11 @@ async def execute_composed_code(code: str) -> Dict[str, Any]:
     WHEN TO USE: After you've manually figured out a working sequence of tool calls
     for one item, use this tool to automate that same sequence across multiple items.
     This saves time and reduces repetitive individual tool calls.
+
+    PERSISTENT SESSIONS: Set persistent=True and provide a session_id to keep
+    variables alive between calls. Useful for multi-step workflows where later
+    calls need results from earlier ones (e.g., grasp configs, accumulated results,
+    helper functions). Variables from the previous call are restored automatically.
 
     SYNTAX: Tools are called as Python functions (not JSON tool calls):
     - Replace dashes with underscores in server names: "my-server__tool_name" → my_server__tool_name()
@@ -184,15 +193,24 @@ async def execute_composed_code(code: str) -> Dict[str, Any]:
 
     Args:
         code: Python code to execute
+        session_id: Session identifier for persistent execution. Use the same ID
+                    across calls to share state. Defaults to empty (no session).
+        persistent: If True, variables from this execution are saved and restored
+                    on the next call with the same session_id.
 
     Returns:
-        Dictionary with execution results (output, status, returncode)
+        Dictionary with execution results (output, status, returncode, session info)
     """
     if not _initialized:
         await initialize()
 
     # Hardcoded timeout: 1 hour (3600 seconds)
-    return _executor.execute_code(code, timeout=3600)
+    return _executor.execute_code(
+        code,
+        timeout=3600,
+        session_id=session_id if persistent else "",
+        persistent=persistent,
+    )
 
 
 @mcp.tool()
