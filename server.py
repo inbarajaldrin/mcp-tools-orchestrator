@@ -9,7 +9,8 @@ import asyncio
 import json
 import os
 from pathlib import Path
-from typing import Dict, Any
+from typing import Annotated, Dict, Any
+from pydantic import Field
 from mcp.server.fastmcp import FastMCP
 
 from src.mcp_tools_orchestrator.api_generator import UnifiedAPIGenerator
@@ -138,68 +139,66 @@ async def initialize():
         raise
 
 
-@mcp.tool()
+@mcp.tool(annotations={
+    "readOnlyHint": False,
+    "destructiveHint": False,
+    "idempotentHint": False,
+    "openWorldHint": True,
+})
 async def execute_composed_code(
-    code: str,
-    session_id: str = "",
-    persistent: bool = False,
+    code: Annotated[str, Field(
+        description=(
+            "Python code to execute. Has access to all MCP tools via "
+            "'from unified_api import *'. Tools are called as Python functions: "
+            "server_name__tool_name(param=value). Replace dashes with underscores "
+            "in server names."
+        ),
+        min_length=1,
+    )],
+    session_id: Annotated[str, Field(
+        description=(
+            "Session identifier for persistent execution. Use the same ID "
+            "across calls to share state between executions."
+        ),
+        default="",
+    )],
+    persistent: Annotated[bool, Field(
+        description=(
+            "If True, variables from this execution are saved and restored "
+            "on the next call with the same session_id. Useful for multi-step "
+            "workflows where later calls need results from earlier ones."
+        ),
+        default=False,
+    )],
 ) -> Dict[str, Any]:
-    """Execute Python code with access to tools from all connected MCP servers.
+    """Execute Python code that orchestrates tools from multiple MCP servers.
 
-    This tool enables writing Python code that orchestrates
-    tools from multiple MCP servers with complex control flow (loops, conditionals,
-    error handling, etc.).
-
-    The code has access to all MCP tools via the auto-generated unified API.
-    Import with: from unified_api import *
-
-    WHEN TO USE: After you've manually figured out a working sequence of tool calls
-    for one item, use this tool to automate that same sequence across multiple items.
-    This saves time and reduces repetitive individual tool calls.
-
-    PERSISTENT SESSIONS: Set persistent=True and provide a session_id to keep
-    variables alive between calls. Useful for multi-step workflows where later
-    calls need results from earlier ones (e.g., grasp configs, accumulated results,
-    helper functions). Variables from the previous call are restored automatically.
-
-    SYNTAX: Tools are called as Python functions (not JSON tool calls):
-    - Replace dashes with underscores in server names: "my-server__tool_name" → my_server__tool_name()
-    - Use keyword arguments with the same parameter names from the tool schema
+    Use after manually figuring out a working sequence for one item, then
+    automate that same sequence across multiple items with loops and error handling.
 
     Example:
-    ```python
-    from unified_api import *
+        ```python
+        from unified_api import *
 
-    # After manually discovering a working sequence for one item,
-    # automate it for remaining items using a loop
-    items = ["item_a", "item_b", "item_c"]
-    results = []
+        items = ["item_a", "item_b", "item_c"]
+        results = []
 
-    for item in items:
-        # Call tools as Python functions: servername__toolname(keyword=args)
-        server__prepare(target=item, mode="sim")
-        result = server__execute_action(name=item, value=123, mode="sim")
+        for item in items:
+            server__prepare(target=item, mode="sim")
+            result = server__execute_action(name=item, value=123, mode="sim")
 
-        # Handle failures with retry or rollback
-        if result.get("result") != "success":
-            server__restore_state()
-            continue
+            if result.get("result") != "success":
+                server__restore_state()
+                continue
 
-        server__finalize(item=item)
-        results.append({"item": item, "status": "success"})
+            server__finalize(item=item)
+            results.append({"item": item, "status": "success"})
 
-    print(f"Processed {len(results)}/{len(items)} successfully")
-    ```
+        print(f"Processed {len(results)}/{len(items)} successfully")
+        ```
 
-    Args:
-        code: Python code to execute
-        session_id: Session identifier for persistent execution. Use the same ID
-                    across calls to share state. Defaults to empty (no session).
-        persistent: If True, variables from this execution are saved and restored
-                    on the next call with the same session_id.
-
-    Returns:
-        Dictionary with execution results (output, status, returncode, session info)
+    Returns dict with keys: output (str), returncode (int), status (str),
+    and session_id/session_file if persistent.
     """
     if not _initialized:
         await initialize()
@@ -213,21 +212,25 @@ async def execute_composed_code(
     )
 
 
-@mcp.tool()
-async def list_available_tools(include_descriptions: bool = False) -> Dict[str, Any]:
-    """List all available tools from all connected MCP servers.
+@mcp.tool(annotations={
+    "readOnlyHint": True,
+    "destructiveHint": False,
+    "openWorldHint": False,
+})
+async def list_available_tools(
+    include_descriptions: Annotated[bool, Field(
+        description=(
+            "If True, include full docstrings for each tool. "
+            "Defaults to False to minimize context usage. "
+            "Skip if you already have tool descriptions from schemas."
+        ),
+        default=False,
+    )],
+) -> Dict[str, Any]:
+    """List all available tools from connected MCP servers with their signatures.
 
-    Returns a structured view of what tools are available for use in composed code.
-    By default, only returns function names and signatures to minimize context usage.
-
-    Args:
-        include_descriptions: If True, include full docstrings for each tool.
-                              Defaults to False since descriptions are already
-                              provided via tool schemas.
-                              Do not include description if you already have description of the tool.
-
-    Returns:
-        Dictionary mapping server names to their available tools with signatures
+    Returns dict with keys: servers (dict mapping server name to tool list),
+    total_servers (int), total_tools (int).
     """
     if not _initialized:
         await initialize()
