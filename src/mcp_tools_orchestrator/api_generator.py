@@ -86,6 +86,13 @@ def _call_tool(server: str, tool: str, arguments: dict) -> dict:
         # Extract result from IPC response
         result = data.get("result")
 
+        # Detect abort signal returned as a successful IPC result
+        # (Ctrl+A soft abort: tool-executor returns a result, not an error)
+        if isinstance(result, str) and "Tool execution cancelled" in result:
+            import sys
+            print('__MCP_ABORT_JSON__{"aborted": true, "reason": "Operation cancelled by user", "tool": "' + server + '__' + tool + '"}__MCP_ABORT_JSON__', file=sys.stderr)
+            raise SystemExit(1)
+
         # Parse if it's a JSON string (common for MCP tools that return dicts)
         if isinstance(result, str):
             try:

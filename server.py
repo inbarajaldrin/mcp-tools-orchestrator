@@ -197,8 +197,18 @@ async def execute_composed_code(
         print(f"Processed {len(results)}/{len(items)} successfully")
         ```
 
-    Returns dict with keys: output (str), returncode (int), status (str),
-    and session_id/session_file if persistent.
+    Returns dict with:
+      - output (str): stdout/stderr from execution (partial results if aborted/timed out)
+      - returncode (int): process exit code (0=success, 1=error, -1=timeout)
+      - status (str): "success" | "failed" | "aborted" | "timeout"
+      - session_id (str): present when persistent=True and status="success"
+      - session_vars (list[str]): saved variable names, present with session_id
+      - reason (str): present when status="aborted" — e.g. "Operation cancelled by user"
+      - tool (str): present when status="aborted" — which tool was cancelled
+
+    When status is "aborted", the user cancelled via Ctrl+A — this is NOT a code error.
+    The output field still contains any partial results printed before the abort.
+    Do not retry or debug aborted executions — wait for the user's next instruction.
     """
     if not _initialized:
         await initialize()

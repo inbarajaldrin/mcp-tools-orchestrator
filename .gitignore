@@ -6,6 +6,9 @@ dist/
 wheels/
 *.egg-info
 
+# Generated at runtime by api_generator from IPC tool discovery
+generated/unified_api.py
+
 # Virtual environments
 .venv
 
