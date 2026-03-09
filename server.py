@@ -173,8 +173,7 @@ async def execute_composed_code(
 ) -> Dict[str, Any]:
     """Execute Python code that orchestrates tools from multiple MCP servers.
 
-    Use after manually figuring out a working sequence for one item, then
-    automate that same sequence across multiple items with loops and error handling.
+    Used to automate a heuristic search or sequential execution using loops and error handling.
 
     Example:
         ```python
@@ -197,19 +196,14 @@ async def execute_composed_code(
         print(f"Processed {len(results)}/{len(items)} successfully")
         ```
 
-    Returns dict with:
-      - output (str): stdout/stderr from execution (partial results if aborted/timed out)
-      - returncode (int): process exit code (0=success, 1=error, -1=timeout)
-      - status (str): "success" | "failed" | "aborted" | "timeout"
-      - session_id (str): present when persistent=True and status="success"
-      - session_vars (list[str]): saved variable names, present with session_id
-      - reason (str): present when status="aborted" — e.g. "Operation cancelled by user"
-      - tool (str): present when status="aborted" — which tool was cancelled
-
-    When status is "aborted", the user cancelled via Ctrl+A — this is NOT a code error.
-    The output field still contains any partial results printed before the abort.
-    Do not retry or debug aborted executions — wait for the user's next instruction.
-    """
+    Returns:
+        output: stdout/stderr from execution (partial results if aborted/timed out)
+        returncode: 0=success, 1=error, -1=timeout
+        status: "success" | "failed" | "aborted" | "timeout"
+        session_id: present when persistent=True and status="success"
+        session_vars: list of saved variable names, present with session_id
+        reason: present when status="aborted" — user cancelled operation. Do not retry.
+        tool: present when status="aborted" — which tool was cancelled"""
     if not _initialized:
         await initialize()
 
