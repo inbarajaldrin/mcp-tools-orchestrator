@@ -53,6 +53,12 @@ name patterns with their underscored equivalents.
 
 **Implementation**: `src/mcp_tools_orchestrator/code_executor.py`
 
+The fix can be disabled for debugging/verification by setting `DISABLE_HYPHEN_FIX=1` in the
+orchestrator's environment. When disabled, models that emit hyphenated names will receive
+`NameError` from Python, making the schema-biased generation directly observable. Set this
+in `mcp_servers_config.json` under the orchestrator's `env` block (the env var must reach
+the orchestrator process, not the client).
+
 ### Phase 1: Exact replacement from known names
 
 At initialization, `_build_hyphen_replacements()` reads `unified_api.py` and builds a

@@ -170,8 +170,9 @@ class CodeExecutor:
         stderr_file = None
         process = None
         try:
-            # Fix hyphenated tool names before wrapping
-            code = self._fix_hyphenated_names(code)
+            # Fix hyphenated tool names before wrapping (toggle via DISABLE_HYPHEN_FIX=1)
+            if not os.environ.get("DISABLE_HYPHEN_FIX"):
+                code = self._fix_hyphenated_names(code)
 
             # Create a temporary Python file
             with tempfile.NamedTemporaryFile(
