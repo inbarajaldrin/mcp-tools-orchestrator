@@ -19,7 +19,7 @@
       "command": "bash",
       "args": [
         "-c",
-        "source /opt/ros/humble/setup.bash && /home/aaugus11/Documents/ros-mcp-server/.venv/bin/python /home/aaugus11/Documents/ros-mcp-server/server.py"
+        "source /opt/ros/humble/setup.bash && /home/aaugus11/Documents/ros-mcp-server/.venv/bin/python /home/aaugus11/Documents/ros-mcp-server/server_mode2.py"
       ]
     },
     "Resources": {
